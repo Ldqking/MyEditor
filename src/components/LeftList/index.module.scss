@@ -1,0 +1,37 @@
+.aside {
+  width: 200px;
+  height: calc(100% - 61px);
+  float: left;
+  border-right: 1px solid #ccc;
+  background-color: #fff;
+}
+
+.aside .iconList {
+  border-bottom: 1px solid #ccc;
+  display: flex;
+  gap: 10px;
+  // 换行
+  flex-wrap: wrap;
+}
+
+.aside .iconList>div {
+  height: 51px;
+  line-height: 50px;
+  text-align: center;
+  margin-left: 10px;
+}
+
+.aside .iconList>div i {
+  cursor: pointer;
+  font-size: 30px;
+  user-select: none;
+}
+
+.items {
+  display: flex;
+  align-items: center;
+
+  .img {
+    width: 35px;
+  }
+}

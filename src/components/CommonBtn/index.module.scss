@@ -1,0 +1,10 @@
+.commonBtn {
+  border: 1px solid #ccc;
+  border-radius: 5px;
+  padding: 0px 10px;
+  cursor: pointer;
+  &:hover {
+    border-color: #4096ff;
+    color: #4096ff;
+  }
+}

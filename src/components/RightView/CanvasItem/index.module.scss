@@ -1,0 +1,11 @@
+.fileSet {
+  .setItem {
+    display: flex;
+    align-items: center;
+    margin-bottom: 10px;
+    color: rgb(117, 116, 116);
+    .label { 
+      width: 90px;
+    }
+  }
+}
