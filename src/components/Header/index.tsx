@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from 'react';
 import styles from "./index.module.scss";
 import CommonBtn from '../CommonBtn';
 import { enterFullscreen } from '../../utils/tools';
+import dataJson from './../../assets/meta2d.202542094020.json'
 
 const Header = () => {
   const [penStatus, setPenStatus] = useState(false);
@@ -164,6 +165,9 @@ function handleFullscreenChange() {
 // 添加跨浏览器事件监听
 
 useEffect(() => {
+    setTimeout(() => {
+      window.MyEditor.open(dataJson as any);
+    }, 1000*2)
     window.addEventListener('fullscreenchange', handleFullscreenChange);
     // window.addEventListener('keydown', onKeyDown);
     return () => {
