@@ -1,0 +1,11 @@
+/* 默认状态下的按钮样式 */
+.openBtn {
+  transition: transform 0.3s ease, background-color 0.3s ease; /* 添加过渡效果 */
+}
+
+/* 抽屉打开状态下的按钮样式 */
+.closeBtn {
+  transition: transform 0.3s ease, background-color 0.3s ease; /* 确保关闭状态下也有相同的过渡效果 */
+  transform: translateX(200px); /* 使用translateX移动按钮 */
+  background-color: #faad14; /* 更改背景色或其他样式以突出显示 */
+}
