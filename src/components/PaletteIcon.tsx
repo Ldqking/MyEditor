@@ -15,6 +15,7 @@ import {
   Warehouse,
   Zap,
   CheckSquare,
+  Map,
 } from 'lucide-react';
 import type { AssetIcon } from '../types';
 
@@ -29,6 +30,7 @@ export function PaletteIcon({ icon }: { icon: AssetIcon }) {
   if (icon === 'building') return <Building2 size={34} />;
   if (icon === 'factory') return <Zap size={34} />;
   if (icon === 'warehouse') return <Warehouse size={34} />;
+  if (icon === 'map') return <Map size={34} />;
   if (icon === 'chart') return <BarChart3 size={34} />;
   if (icon === 'activity') return <Activity size={34} />;
   if (icon === 'switch') return <ToggleRight size={34} />;

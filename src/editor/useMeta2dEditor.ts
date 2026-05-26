@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Meta2d, Options, Pen } from '@meta2d/core';
 import type { CanvasSettings, CommunicationConfig, EditorFile } from '../types';
 import { createEditorFile, downloadEditorFile, loadEditorFile, readEditorFile, saveEditorFile } from './fileActions';
-import { initialSettings } from './assetLibrary';
+import { enhanceEchartsTooltipPen, enhanceGaugePen, fillMapData, inferEchartsMapScope, initialSettings, suppressPenHoverTitle, upgradeEchartsMapPen } from './assetLibrary';
 
 declare global {
   interface Window {
@@ -23,12 +23,13 @@ const defaultOptions: Options = {
 };
 
 function clonePen(pen: Pen, x = 420, y = 260): Pen {
+  const cloned = JSON.parse(JSON.stringify(pen)) as Pen;
   return {
-    ...JSON.parse(JSON.stringify(pen)),
+    ...cloned,
     id: undefined,
     x,
     y,
-    title: pen.text || pen.name,
+    title: '',
   };
 }
 
@@ -43,16 +44,130 @@ function generateUUID() {
   });
 }
 
+function syncEchartsExternalElements(meta2d: Meta2d) {
+  const locked = Boolean((meta2d.store.data as typeof meta2d.store.data & { locked?: number }).locked);
+  meta2d.store.data.pens.forEach((pen) => {
+    if (pen.name !== 'echarts') return;
+    pen.externElement = true;
+    const div = (pen.calculative as Pen['calculative'] & { singleton?: { div?: HTMLDivElement } })?.singleton?.div;
+    const chart = (pen.calculative as Pen['calculative'] & { singleton?: { echart?: { resize?: () => void } } })?.singleton?.echart;
+    if (div) {
+      div.style.pointerEvents = locked ? 'initial' : 'none';
+      div.style.userSelect = locked ? 'initial' : 'none';
+    }
+    chart?.resize?.();
+  });
+}
+
+function installChartHoverTooltip(container: HTMLElement | null, meta2d: Meta2d) {
+  if (!container) return () => { };
+  const tooltip = document.createElement('div');
+  tooltip.className = 'chart-hover-tooltip';
+  tooltip.hidden = true;
+  container.appendChild(tooltip);
+
+  const hide = () => {
+    tooltip.hidden = true;
+  };
+
+  const moveTooltip = (event: MouseEvent) => {
+    const hover = meta2d.store.hover;
+    const isActive = Boolean(hover?.id && meta2d.store.active?.some((pen) => pen.id === hover.id));
+    if (!hover || hover.name !== 'gauge' || isActive) {
+      hide();
+      return;
+    }
+
+    const text = formatGaugeHoverValue(hover);
+    if (!text) {
+      hide();
+      return;
+    }
+
+    tooltip.textContent = text;
+    tooltip.hidden = false;
+    const rect = container.getBoundingClientRect();
+    const tooltipRect = tooltip.getBoundingClientRect();
+    const left = Math.min(rect.width - tooltipRect.width - 8, Math.max(8, event.clientX - rect.left + 14));
+    const top = Math.min(rect.height - tooltipRect.height - 8, Math.max(8, event.clientY - rect.top + 14));
+    tooltip.style.transform = `translate(${left}px, ${top}px)`;
+  };
+
+  container.addEventListener('mousemove', moveTooltip);
+  container.addEventListener('mouseleave', hide);
+  return () => {
+    container.removeEventListener('mousemove', moveTooltip);
+    container.removeEventListener('mouseleave', hide);
+    tooltip.remove();
+  };
+}
+
+function formatGaugeHoverValue(pen: Pen) {
+  const value = toNumber((pen as Pen & { value?: unknown }).value);
+  if (value === null) return '';
+  const unit = (pen as Pen & { unit?: unknown }).unit;
+  return `仪表盘: ${value}${unit ? ` ${String(unit)}` : ''}`;
+}
+
+function upgradeEchartsMapPens(meta2d: Meta2d) {
+  let upgraded = false;
+  meta2d.store.data.pens.forEach((pen) => {
+    upgraded = suppressPenHoverTitle(pen) || upgraded;
+    upgraded = enhanceGaugePen(pen) || upgraded;
+    upgraded = upgradeEchartsMapPen(pen) || upgraded;
+    upgraded = enhanceEchartsTooltipPen(pen) || upgraded;
+  });
+
+  if (!upgraded) return;
+  meta2d.store.data.pens.forEach((pen) => {
+    if (pen.name !== 'echarts') return;
+    const chart = (pen.calculative as Pen['calculative'] & { singleton?: { echart?: { setOption?: (option: unknown, notMerge?: boolean) => void; resize?: () => void } } })?.singleton?.echart;
+    chart?.setOption?.((pen as Pen & { echarts?: { option?: unknown } }).echarts?.option, true);
+    chart?.resize?.();
+  });
+  meta2d.render();
+}
+
 function normalizeEditorFile(file: EditorFile): EditorFile {
+  const mockSources = mergeMockSources(initialSettings.mockSources, file.settings?.mockSources);
   return {
     version: 1,
     settings: {
       projectId: file.settings?.projectId || generateUUID(),
       ...initialSettings,
-      ...file.settings
+      ...file.settings,
+      mockSources,
     },
     meta2d: file.meta2d,
   };
+}
+
+function mergeMockSources(defaultSources: CanvasSettings['mockSources'] = [], savedSources: CanvasSettings['mockSources'] = []) {
+  const defaultById = new Map(defaultSources.map((source) => [source.id, source]));
+  const mergedSavedSources = savedSources.map((source) => {
+    const defaultSource = defaultById.get(source.id);
+    if (!defaultSource) return source;
+    return {
+      ...defaultSource,
+      ...source,
+      payload: mergeMissingPayload(defaultSource.payload, source.payload),
+    };
+  });
+  const savedIds = new Set(savedSources.map((source) => source.id));
+  return [...mergedSavedSources, ...defaultSources.filter((source) => !savedIds.has(source.id))];
+}
+
+function mergeMissingPayload(defaultValue: unknown, savedValue: unknown): unknown {
+  if (isRecord(defaultValue) && isRecord(savedValue)) {
+    return Object.entries(defaultValue).reduce<Record<string, unknown>>(
+      (merged, [key, value]) => ({
+        ...merged,
+        [key]: key in merged ? mergeMissingPayload(value, merged[key]) : value,
+      }),
+      { ...savedValue },
+    );
+  }
+  return savedValue === undefined ? defaultValue : savedValue;
 }
 
 export function useMeta2dEditor() {
@@ -82,6 +197,7 @@ export function useMeta2dEditor() {
   useEffect(() => {
     let disposed = false;
     let meta2d: Meta2d | null = null;
+    let cleanupChartTooltip: (() => void) | undefined;
 
     async function setup() {
       const [core, diagrams, flow, activity, classDiagram, sequence, form, chart, le5leCharts, echartsModule] =
@@ -111,6 +227,13 @@ export function useMeta2dEditor() {
       meta2d = new core.Meta2d('meta2d', { ...defaultOptions, grid: settingsRef.current.showGrid });
       window.meta2d = meta2d;
       meta2dRef.current = meta2d;
+      cleanupChartTooltip = installChartHoverTooltip(container, meta2d);
+      const penNetwork = meta2d.penNetwork.bind(meta2d);
+      meta2d.penNetwork = (pen: Pen) => {
+        if (!pen.apiUrl && !pen.apiEnable) return;
+        meta2d!.store.data.networks = meta2d!.store.data.networks || [];
+        penNetwork(pen);
+      };
 
       meta2d.register(diagrams.commonPens() as unknown as Record<string, (pen: Pen, ctx?: CanvasRenderingContext2D) => Path2D>);
       meta2d.register(flow.flowPens());
@@ -130,7 +253,18 @@ export function useMeta2dEditor() {
       meta2d.setOptions({ autoAlignGrid: settingsRef.current.snapToGrid });
 
       const events = ['active', 'inactive', 'mouseup', 'change', 'valueUpdate', 'drop'];
-      events.forEach((event) => meta2d?.on(event, refresh));
+      events.forEach((event) => {
+        meta2d?.on(event, () => {
+          if (event === 'active') {
+            if (settingsRef.current.drawingMode === 'line' || settingsRef.current.drawingMode === 'pencil') {
+              meta2d?.stopPencil();
+              meta2d?.drawLine('');
+              setCanvasSettings((s) => ({ ...s, drawingMode: null }));
+            }
+          }
+          refresh();
+        });
+      });
       meta2d?.on('scale', (zoom?: number) => {
         if (zoom === undefined) return;
         setSettingsState((current) => {
@@ -151,6 +285,7 @@ export function useMeta2dEditor() {
 
     return () => {
       disposed = true;
+      cleanupChartTooltip?.();
       meta2d?.destroy();
       meta2dRef.current = null;
       window.meta2d = undefined;
@@ -184,6 +319,8 @@ export function useMeta2dEditor() {
           const editorFile = normalizeEditorFile(file);
           setCanvasSettings(editorFile.settings);
           meta2d.open(editorFile.meta2d);
+          upgradeEchartsMapPens(meta2d);
+          syncEchartsExternalElements(meta2d);
           refresh();
         } catch (e) {
           console.error('Failed to load auto-saved local data', e);
@@ -221,7 +358,10 @@ export function useMeta2dEditor() {
       const x = rect ? Math.max(40, rect.width / 2 - width / 2) : 420;
       const y = rect ? Math.max(40, rect.height / 2 - height / 2) : 260;
       const created = await meta2d.addPen(clonePen(pen, x, y), true);
+      upgradeEchartsMapPen(created);
       meta2d.active([created]);
+      upgradeEchartsMapPens(meta2d);
+      syncEchartsExternalElements(meta2d);
       refresh();
     },
     [refresh],
@@ -246,6 +386,10 @@ export function useMeta2dEditor() {
           },
           true,
         );
+      }
+
+      if (patch.lineName !== undefined) {
+        meta2d.updateLineType(current, patch.lineName as string);
       }
 
       meta2d.setValue({ id: selectedPen.id, ...patch }, { render: true, doEvent: true, history: true });
@@ -312,9 +456,9 @@ export function useMeta2dEditor() {
       const target = pen.id ? meta2dRef.current?.findOne(pen.id) : undefined;
       if (!target) return;
       meta2dRef.current?.active([target]);
-      refresh();
+      meta2dRef.current?.gotoView(target);
     },
-    [refresh],
+    [],
   );
 
   const newFile = useCallback(() => {
@@ -347,6 +491,8 @@ export function useMeta2dEditor() {
         // 设置画布配置并载入图元
         setCanvasSettings(editorFile.settings);
         meta2d.open(editorFile.meta2d);
+        upgradeEchartsMapPens(meta2d);
+        syncEchartsExternalElements(meta2d);
 
         // 显式将选中的图元清空，防止旧面板在加载新文件后状态不匹配
         setSelectedPen(null);
@@ -372,6 +518,8 @@ export function useMeta2dEditor() {
     const editorFile = normalizeEditorFile(file);
     setCanvasSettings(editorFile.settings);
     meta2d.open(editorFile.meta2d);
+    upgradeEchartsMapPens(meta2d);
+    syncEchartsExternalElements(meta2d);
     refresh();
   }, [refresh, setCanvasSettings]);
 
@@ -381,9 +529,13 @@ export function useMeta2dEditor() {
     const editorFile = normalizeEditorFile(data);
     setCanvasSettings(editorFile.settings);
     meta2d.open(editorFile.meta2d);
+    upgradeEchartsMapPens(meta2d);
     meta2d.lock(1); // Force lock in preview
+    syncEchartsExternalElements(meta2d);
     setTimeout(() => {
       meta2d.fitView(true, 100);
+      syncEchartsExternalElements(meta2d);
+      meta2d.render();
     }, 100);
     refresh();
   }, [refresh, setCanvasSettings]);
@@ -415,7 +567,12 @@ export function useMeta2dEditor() {
 
   const togglePreview = useCallback(() => {
     const nextPreview = !settingsRef.current.previewMode;
-    meta2dRef.current?.lock(nextPreview ? 1 : 0);
+    const meta2d = meta2dRef.current;
+    meta2d?.lock(nextPreview ? 1 : 0);
+    if (meta2d) {
+      syncEchartsExternalElements(meta2d);
+      meta2d.render();
+    }
     setCanvasSettings((settings) => ({ ...settings, previewMode: nextPreview }));
   }, [setCanvasSettings]);
 
@@ -434,6 +591,8 @@ export function useMeta2dEditor() {
     const data = meta2d.store.data as typeof meta2d.store.data & { locked?: number };
     const nextLock = data.locked ? 0 : 1;
     meta2d.lock(nextLock);
+    syncEchartsExternalElements(meta2d);
+    meta2d.render();
     setCanvasSettings((settings) => ({ ...settings, locked: nextLock === 1 }));
     refresh();
   }, [refresh, setCanvasSettings]);
@@ -451,15 +610,40 @@ export function useMeta2dEditor() {
     (config: CommunicationConfig) => {
       const meta2d = meta2dRef.current;
       if (!meta2d || !selectedPen?.id) return;
-      const value = config.targetProp === 'data' ? tryParseJson(config.mockValue) : config.mockValue;
-      meta2d.setValue(
-        {
-          id: selectedPen.id,
-          [config.targetProp]: value,
-          communication: config,
-        },
-        { render: true, doEvent: true, history: true },
-      );
+      const currentPen = meta2d.findOne(selectedPen.id);
+      if (!currentPen) return;
+      const value = config.targetProp === 'data' || config.targetProp === 'value' ? tryParseJson(config.mockValue) : config.mockValue;
+      const patch: any = {
+        id: selectedPen.id,
+        [config.targetProp]: value,
+        communication: config,
+      };
+
+      if (currentPen.name === 'echarts' && config.targetProp === 'data') {
+        const echarts = buildUpdatedEchartsConfig(currentPen, value);
+        if (echarts) {
+          patch.echarts = echarts;
+          delete patch.data;
+        }
+      }
+
+      if (currentPen.name === 'gauge' && config.targetProp === 'data') {
+        Object.assign(patch, buildUpdatedGaugePatch(value));
+        delete patch.data;
+      }
+
+      if (config.targetProp === 'value' && config.label) {
+        const hasColon = config.label.trim().endsWith(':') || config.label.trim().endsWith('：');
+        patch.text = `${config.label}${hasColon ? '' : '：'}${value}`;
+      }
+
+      meta2d.setValue(patch, { render: true, doEvent: true, history: true });
+      if (patch.echarts) {
+        const pen = meta2d.findOne(selectedPen.id);
+        const chart = (pen?.calculative as Pen['calculative'] & { singleton?: { echart?: { setOption?: (option: unknown, notMerge?: boolean) => void; resize?: () => void } } })?.singleton?.echart;
+        chart?.setOption?.(patch.echarts.option, true);
+        chart?.resize?.();
+      }
       refresh();
     },
     [refresh, selectedPen?.id],
@@ -590,6 +774,201 @@ function tryParseJson(value: string) {
   } catch {
     return value;
   }
+}
+
+function buildUpdatedEchartsConfig(pen: Pen, input: unknown) {
+  const echartsConfig = (pen as Pen & { echarts?: Record<string, unknown> }).echarts;
+  const option = deepClone((echartsConfig?.option || {}) as Record<string, unknown>);
+  const series = normalizeSeries(option.series);
+  if (!series.length) return null;
+
+  const type = String(series[0]?.type || '');
+  const scope = inferEchartsMapScope(pen);
+  const payload = pickEchartsPayload(input, type, scope);
+
+  if (type === 'pie') {
+    const data = normalizeNameValueData(payload);
+    if (!data.length) return null;
+    series[0].data = data;
+  } else if (type === 'map') {
+    let data = normalizeNameValueData(payload);
+    if (!data.length) return null;
+    if (scope) {
+      data = fillMapData(data, scope);
+    }
+    series.forEach((item) => {
+      if (item.type === 'map' && item.name !== '地图底色') {
+        item.data = data;
+      }
+    });
+  } else if (type === 'lines') {
+    const data = normalizePointData(payload);
+    if (!data.length) return null;
+    const origin = data[0].value.slice(0, 2);
+    series.forEach((item) => {
+      if (item.type === 'lines') {
+        item.data = data.slice(1).map((point) => ({ fromName: data[0].name, toName: point.name, coords: [origin, point.value.slice(0, 2)] }));
+      }
+      if (item.coordinateSystem === 'geo' && item.type !== 'lines') {
+        item.data = data;
+      }
+    });
+  } else if (type === 'effectScatter' || type === 'scatter' || series.some((item) => item.coordinateSystem === 'geo')) {
+    const data = normalizePointData(payload);
+    if (!data.length) return null;
+    series.forEach((item) => {
+      if (item.coordinateSystem === 'geo' && item.type !== 'lines') {
+        item.data = data;
+      }
+    });
+  } else {
+    const data = normalizeAxisData(payload);
+    if (!data.values.length) return null;
+    setCategoryAxisData(option.xAxis, data.categories);
+    series[0].data = data.values;
+    if (typeof Math.max(...data.values) === 'number') {
+      option.yAxis = updateYAxisMax(option.yAxis, Math.max(...data.values) + 10);
+    }
+  }
+
+  option.series = Array.isArray(option.series) ? series : series[0];
+  return {
+    ...echartsConfig,
+    option,
+  };
+}
+
+function buildUpdatedGaugePatch(input: unknown) {
+  if (isRecord(input)) {
+    const patch: Record<string, unknown> = {};
+    const value = toNumber(input.value);
+    const min = toNumber(input.min);
+    const max = toNumber(input.max);
+    if (value !== null) patch.value = value;
+    if (min !== null) patch.min = min;
+    if (max !== null) patch.max = max;
+    if (input.unit !== undefined) patch.unit = String(input.unit);
+    return patch;
+  }
+
+  const value = toNumber(input);
+  return value === null ? {} : { value };
+}
+
+function pickEchartsPayload(input: unknown, chartType: string, scope: ReturnType<typeof inferEchartsMapScope> = null) {
+  if (!isRecord(input)) return input;
+  const charts = isRecord(input.charts) ? input.charts : input;
+  if ((chartType === 'bar' || chartType === 'line') && charts[chartType] !== undefined) return charts[chartType];
+  if (chartType === 'pie' && charts.pie !== undefined) return charts.pie;
+  if (scope === 'shanxi' && chartType === 'map' && charts.shanxiMapRegion !== undefined) return charts.shanxiMapRegion;
+  if (scope === 'shanxi' && (chartType === 'effectScatter' || chartType === 'scatter' || chartType === 'lines') && charts.shanxiMapPoints !== undefined) {
+    return charts.shanxiMapPoints;
+  }
+  if (chartType === 'map' && charts.mapRegion !== undefined) return charts.mapRegion;
+  if ((chartType === 'effectScatter' || chartType === 'scatter') && charts.mapPoints !== undefined) return charts.mapPoints;
+  if (chartType === 'lines' && charts.mapPoints !== undefined) return charts.mapPoints;
+  return input;
+}
+
+function normalizeSeries(series: unknown): Array<Record<string, any>> {
+  if (Array.isArray(series)) return deepClone(series);
+  if (isRecord(series)) return [deepClone(series)];
+  return [];
+}
+
+function normalizeAxisData(input: unknown): { categories: string[]; values: number[] } {
+  if (isRecord(input)) {
+    const categories = Array.isArray(input.categories) ? input.categories.map(String) : Array.isArray(input.labels) ? input.labels.map(String) : [];
+    const rawValues = Array.isArray(input.values) ? input.values : Array.isArray(input.data) ? input.data : [];
+    const values = rawValues.map(toNumber).filter((value): value is number => value !== null);
+    if (values.length) return { categories: categories.length ? categories : values.map((_, index) => String(index + 1)), values };
+  }
+
+  if (Array.isArray(input)) {
+    if (input.every((item) => typeof item === 'number' || typeof item === 'string')) {
+      const values = input.map(toNumber).filter((value): value is number => value !== null);
+      return { categories: values.map((_, index) => String(index + 1)), values };
+    }
+    const items = normalizeNameValueData(input);
+    return { categories: items.map((item) => item.name), values: items.map((item) => Number(item.value || 0)) };
+  }
+
+  const value = toNumber(input);
+  return value === null ? { categories: [], values: [] } : { categories: ['Value'], values: [value] };
+}
+
+function normalizeNameValueData(input: unknown): Array<{ name: string; value: number }> {
+  if (Array.isArray(input)) {
+    return input
+      .map((item, index) => {
+        if (isRecord(item)) {
+          const value = toNumber(item.value);
+          if (value === null) return null;
+          return { name: String(item.name ?? index + 1), value };
+        }
+        const value = toNumber(item);
+        return value === null ? null : { name: String(index + 1), value };
+      })
+      .filter((item): item is { name: string; value: number } => Boolean(item));
+  }
+
+  if (isRecord(input)) {
+    return Object.entries(input)
+      .map(([name, value]) => {
+        const numericValue = toNumber(value);
+        return numericValue === null ? null : { name, value: numericValue };
+      })
+      .filter((item): item is { name: string; value: number } => Boolean(item));
+  }
+
+  return [];
+}
+
+function normalizePointData(input: unknown): Array<{ name: string; value: number[] }> {
+  if (!Array.isArray(input)) return [];
+  return input
+    .map((item, index) => {
+      if (!isRecord(item) || !Array.isArray(item.value)) return null;
+      const value = item.value.map(toNumber).filter((point): point is number => point !== null);
+      return value.length >= 2 ? { name: String(item.name ?? index + 1), value } : null;
+    })
+    .filter((item): item is { name: string; value: number[] } => Boolean(item));
+}
+
+function setCategoryAxisData(axis: unknown, categories: string[]) {
+  if (!categories.length) return;
+  if (Array.isArray(axis)) {
+    const categoryAxis = axis.find((item) => isRecord(item) && item.type === 'category') || axis[0];
+    if (isRecord(categoryAxis)) categoryAxis.data = categories;
+    return;
+  }
+  if (isRecord(axis)) axis.data = categories;
+}
+
+function updateYAxisMax(axis: unknown, max: number) {
+  if (Array.isArray(axis)) {
+    axis.forEach((item) => {
+      if (isRecord(item)) item.max = max;
+    });
+    return axis;
+  }
+  if (isRecord(axis)) {
+    return { ...axis, max };
+  }
+  return axis;
+}
+
+function toNumber(value: unknown) {
+  const numberValue = typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : NaN;
+  return Number.isFinite(numberValue) ? numberValue : null;
+}
+
+function isRecord(value: unknown): value is Record<string, any> {
+  return Boolean(value && typeof value === 'object' && !Array.isArray(value));
+}
+
+function deepClone<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value));
 }
 
 export { clonePen };

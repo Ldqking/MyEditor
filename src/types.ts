@@ -11,6 +11,7 @@ export type AssetIcon =
   | 'circle'
   | 'diamond'
   | 'factory'
+  | 'map'
   | 'pentagon'
   | 'slider'
   | 'square'
@@ -31,6 +32,7 @@ export interface CanvasSettings {
   locked?: boolean;
   projectId?: string;
   gridColor?: string;
+  mockSources?: MockDataSource[];
 }
 
 export interface AssetItem {
@@ -53,9 +55,19 @@ export interface EditorFile {
   meta2d: Meta2dData;
 }
 
+export interface MockDataSource {
+  id: string;
+  name: string;
+  description?: string;
+  payload: unknown;
+}
+
 export interface CommunicationConfig {
   sourceType: 'mock' | 'http' | 'websocket' | 'mqtt';
+  sourceId?: string;
   variable: string;
   targetProp: 'text' | 'value' | 'background' | 'color' | 'data';
   mockValue: string;
+  valuePath?: string;
+  label?: string;
 }
