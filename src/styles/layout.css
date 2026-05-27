@@ -1,0 +1,29 @@
+.editor-shell {
+  display: grid;
+  grid-template-rows: 49px 1fr;
+  width: 100vw;
+  height: 100vh;
+  background: #111316;
+}
+
+.topbar {
+  display: grid;
+  grid-template-columns: 226px 270px 1fr auto;
+  align-items: center;
+  border-bottom: 1px solid #30363b;
+  background: #1c1e21;
+}
+
+.workspace {
+  display: grid;
+  grid-template-columns: 226px 1fr 278px;
+  min-height: 0;
+}
+
+.asset-panel,
+.props-panel {
+  min-height: 0;
+  background:
+    radial-gradient(circle at 15% 12%, rgba(27, 38, 45, 0.72), transparent 22%),
+    #17191d;
+}

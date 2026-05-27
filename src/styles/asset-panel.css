@@ -1,0 +1,124 @@
+.asset-panel {
+  display: grid;
+  grid-template-rows: auto 1fr 116px;
+  border-right: 1px solid #30363b;
+}
+
+.panel-title {
+  padding: 16px 20px 10px;
+}
+
+.panel-title span {
+  display: block;
+  color: #13e3ef;
+  font-weight: 800;
+}
+
+.panel-title small {
+  display: block;
+  margin-top: 4px;
+  color: #8a969e;
+}
+
+.asset-scroll,
+.props-scroll {
+  min-height: 0;
+  overflow: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #3e464d transparent;
+}
+
+.asset-group {
+  padding: 10px 14px 8px;
+}
+
+.asset-group-title {
+  display: flex;
+  justify-content: space-between;
+  margin: 0 6px 10px;
+  color: #dce5ea;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.asset-group-button {
+  align-items: center;
+  width: calc(100% - 12px);
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.asset-group-button span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.asset-group-title small {
+  color: #75828b;
+}
+
+.asset-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.asset-tile {
+  display: grid;
+  place-items: center;
+  height: 56px;
+  border: 1px solid #2d3339;
+  border-radius: 4px;
+  background: #202226;
+  color: #c4d2d9;
+  cursor: grab;
+  transition:
+    border-color 0.16s ease,
+    color 0.16s ease,
+    background 0.16s ease,
+    box-shadow 0.16s ease;
+}
+
+.asset-tile:hover {
+  border-color: #12dce9;
+  background: #1d3440;
+  color: #12dce9;
+  box-shadow: inset 0 0 24px rgba(18, 220, 233, 0.12);
+}
+
+.mini-shape {
+  width: 32px;
+  height: 32px;
+  border: 2px solid currentColor;
+}
+
+.mini-diamond,
+.mini-decision {
+  transform: rotate(45deg) scale(0.75);
+}
+
+.mini-star {
+  clip-path: polygon(50% 0, 62% 34%, 98% 35%, 69% 56%, 79% 91%, 50% 70%, 21% 91%, 31% 56%, 2% 35%, 38% 34%);
+  background: currentColor;
+  border: 0;
+}
+
+.side-footer {
+  display: grid;
+  align-content: center;
+  gap: 12px;
+  padding: 0 20px;
+  border-top: 1px solid #252a2f;
+}
+
+.side-footer button {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  border: 0;
+  background: transparent;
+  color: #c9d4da;
+  cursor: pointer;
+}

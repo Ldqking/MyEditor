@@ -239,8 +239,28 @@ export function AssetPanel({ actions }: { actions: EditorActions }) {
                     <span className="help-card-val">点击左侧资产，或将其拖拽入画布</span>
                   </div>
                   <div className="help-card-item">
-                    <span className="help-card-key">钢笔/铅笔</span>
-                    <span className="help-card-val">点击顶栏工具绘制，再次点击或右键可取消</span>
+                    <span className="help-card-key">文件操作</span>
+                    <span className="help-card-val">新建会清空画布；打开json画布数据文件，会覆盖当前画布；保存会覆盖本地缓存的画布数据</span>
+                  </div>
+                  <div className="help-card-item">
+                    <span className="help-card-key">工具使用</span>
+                    <span className="help-card-val">点击顶栏工具启用钢笔/铅笔/放大镜，再次点击或右键可取消</span>
+                  </div>
+                  <div className="help-card-item">
+                    <span className="help-card-key">撤销/恢复</span>
+                    <span className="help-card-val">返回上一步（<strong>ctrl+z</strong>）；恢复撤销操作（<strong>ctrl+y</strong>）</span>
+                  </div>
+                  <div className="help-card-item">
+                    <span className="help-card-key">锁定画布</span>
+                    <span className="help-card-val">不再显示图元操作锚点，但右侧面板还支持编辑图元属性</span>
+                  </div>
+                  <div className="help-card-item">
+                    <span className="help-card-key">网格与全屏</span>
+                    <span className="help-card-val">全屏功能；切换辅助网格显示与隐藏</span>
+                  </div>
+                  <div className="help-card-item">
+                    <span className="help-card-key">预览/发布</span>
+                    <span className="help-card-val">预览会新开窗口并缩放画布内容到占满屏幕；发布暂时为导出当前画布json数据</span>
                   </div>
                 </div>
               </div>
@@ -253,11 +273,15 @@ export function AssetPanel({ actions }: { actions: EditorActions }) {
                 <div className="help-card-list">
                   <div className="help-card-item">
                     <span className="help-card-key">拖拽画布</span>
-                    <span className="help-card-val">按住 <strong>空格键</strong>（或鼠标右键）并拖拽</span>
+                    <span className="help-card-val">按住 <strong>空格键</strong>（或鼠标<strong>右键</strong>）并拖拽</span>
                   </div>
                   <div className="help-card-item">
                     <span className="help-card-key">画布缩放</span>
-                    <span className="help-card-val">滑动鼠标滚轮，或点击悬浮面板的 <strong>+</strong> / <strong>-</strong></span>
+                    <span className="help-card-val">滑动鼠标滚轮，或点击右上角悬浮面板的 <strong>+</strong> / <strong>-</strong></span>
+                  </div>
+                  <div className="help-card-item">
+                    <span className="help-card-key">框选图元组</span>
+                    <span className="help-card-val">左键长按拖拽空白区域可建立临时图元组，支持直接操作更新图元组整体的位置旋转等</span>
                   </div>
                 </div>
               </div>
@@ -270,11 +294,31 @@ export function AssetPanel({ actions }: { actions: EditorActions }) {
                 <div className="help-card-list">
                   <div className="help-card-item">
                     <span className="help-card-key">属性修改</span>
-                    <span className="help-card-val">选中图元，在右侧“设计”面板直接修改宽高与坐标</span>
+                    <span className="help-card-val">选中图元，在右侧“设计”面板直接修改宽高与坐标等参数</span>
+                  </div>
+                  <div className="help-card-item">
+                    <span className="help-card-key">图元复制</span>
+                    <span className="help-card-val">选中图元或图元组，<strong>ctrl+c</strong> =&gt; <strong>ctrl+v</strong> 复制</span>
                   </div>
                   <div className="help-card-item">
                     <span className="help-card-key">图元删除</span>
-                    <span className="help-card-val">选中图元后按 <strong>Delete</strong>，或在“结构”中删除</span>
+                    <span className="help-card-val">选中图元后按 <strong>Delete</strong>，或在右侧<strong>设计</strong>最底部/“<strong>结构</strong>”列表中删除</span>
+                  </div>
+                  <div className="help-card-item">
+                    <span className="help-card-key">数据绑定</span>
+                    <span className="help-card-val">选中图元，点击通信，选择数据源和绑定属性后，选中数据树中要绑定的数据值<br />（注意：绑定数据源前要先定义数据源=》1.点击空白画布，2.选择通信，3.新建数据源）</span>
+                  </div>
+                  <div className="help-card-item">
+                    <span className="help-card-key">事件绑定</span>
+                    <span className="help-card-val">选中图元，点击事件，定义好事件后需要点击<strong>应用到选中图元</strong>才能生效<br />（建议：测试绑定事件时，临时锁定画布）</span>
+                  </div>
+                  <div className="help-card-item">
+                    <span className="help-card-key">动画绑定</span>
+                    <span className="help-card-val">选中图元，点击动画，选择要绑定的动画类型，可临时点击播放动画预览动画效果<br />（建议：测试绑定动画时，可临时选中别的图元）</span>
+                  </div>
+                  <div className="help-card-item">
+                    <span className="help-card-key">图元结构</span>
+                    <span className="help-card-val">可查看当前已有的图元元素列表，点击列表项，画布聚焦的目标图元，<br /> 支持通过上下箭头调整图元层级、小眼睛切换图元显示隐藏、锁定单个图元和删除图元</span>
                   </div>
                 </div>
               </div>
