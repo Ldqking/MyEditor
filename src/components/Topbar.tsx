@@ -92,10 +92,10 @@ export function Topbar({ actions, settings }: { actions: EditorActions; settings
           <Save size={16} />
           保存
         </button>
-        <button onClick={actions.loadLocal}>
+        {/* <button onClick={actions.loadLocal}>
           <MapPinned size={16} />
           读取
-        </button>
+        </button> */}
       </div>
       <div className="tool-strip">
         <IconButton active={settings.drawingMode === 'line'} label="钢笔" icon={<PenTool size={16} />} onClick={actions.drawingLine} showLabel />

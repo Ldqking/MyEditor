@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { Meta2d, Options, Pen } from '@meta2d/core';
-import type { CanvasSettings, CommunicationConfig, EditorFile } from '../types';
+import { CanvasLayer, type Meta2d, type Options, type Pen } from '@meta2d/core';
+import type { CanvasSettings, CommunicationConfig, EditorFile, PenEventConfig } from '../types';
 import { createEditorFile, downloadEditorFile, loadEditorFile, readEditorFile, saveEditorFile } from './fileActions';
-import { enhanceEchartsTooltipPen, enhanceGaugePen, fillMapData, inferEchartsMapScope, initialSettings, suppressPenHoverTitle, upgradeEchartsMapPen } from './assetLibrary';
+import { enhanceEchartsTooltipPen, enhanceGaugePen, fillMapData, inferEchartsMapScope, initialSettings, suppressPenHoverTitle, upgradeEchartsMapPen, upgradeFormPen } from './assetLibrary';
 
 declare global {
   interface Window {
@@ -21,6 +21,51 @@ const defaultOptions: Options = {
   rule: false,
   autoAlignGrid: true,
 };
+
+type Meta2dDrawingState = Meta2d & {
+  canvas?: {
+    drawingLine?: Pen;
+    drawingLineName?: string;
+    pencil?: boolean;
+    pencilLine?: Pen;
+    externalElements?: HTMLDivElement;
+    canvasImage?: { init?: () => void };
+    canvasImageBottom?: { init?: () => void };
+  };
+};
+
+function clearDrawingToolState(meta2d: Meta2d | null | undefined) {
+  if (!meta2d) return;
+  const drawingMeta2d = meta2d as Meta2dDrawingState;
+  drawingMeta2d.stopPencil();
+  drawingMeta2d.drawLine('');
+  if (drawingMeta2d.canvas) {
+    drawingMeta2d.canvas.drawingLine = undefined;
+    drawingMeta2d.canvas.drawingLineName = undefined;
+    drawingMeta2d.canvas.pencil = false;
+    drawingMeta2d.canvas.pencilLine = undefined;
+    drawingMeta2d.canvas.externalElements?.style.setProperty('cursor', 'default');
+  }
+  drawingMeta2d.render();
+}
+
+function normalizeLayerRendering(meta2d: Meta2d) {
+  let hasOrderedImage = false;
+  meta2d.store.data.pens.forEach((pen) => {
+    if (!pen.image || pen.name === 'gif' || pen.canvasLayer === CanvasLayer.CanvasTemplate) return;
+    hasOrderedImage = true;
+    if (pen.canvasLayer !== CanvasLayer.CanvasMain) {
+      pen.canvasLayer = CanvasLayer.CanvasMain;
+      if (pen.calculative) {
+        pen.calculative.canvasLayer = CanvasLayer.CanvasMain;
+      }
+    }
+  });
+  if (!hasOrderedImage) return;
+  const canvas = (meta2d as Meta2dDrawingState).canvas;
+  canvas?.canvasImage?.init?.();
+  canvas?.canvasImageBottom?.init?.();
+}
 
 function clonePen(pen: Pen, x = 420, y = 260): Pen {
   const cloned = JSON.parse(JSON.stringify(pen)) as Pen;
@@ -116,6 +161,7 @@ function upgradeEchartsMapPens(meta2d: Meta2d) {
     upgraded = enhanceGaugePen(pen) || upgraded;
     upgraded = upgradeEchartsMapPen(pen) || upgraded;
     upgraded = enhanceEchartsTooltipPen(pen) || upgraded;
+    upgraded = upgradeFormPen(pen) || upgraded;
   });
 
   if (!upgraded) return;
@@ -138,8 +184,31 @@ function normalizeEditorFile(file: EditorFile): EditorFile {
       ...file.settings,
       mockSources,
     },
-    meta2d: file.meta2d,
+    meta2d: normalizeMeta2dData(file.meta2d),
   };
+}
+
+function normalizeMeta2dData(meta2dData: EditorFile['meta2d']) {
+  const data =
+    meta2dData ||
+    ({
+      pens: [],
+      x: 0,
+      y: 0,
+      scale: 1,
+      origin: { x: 0, y: 0 },
+      center: { x: 0, y: 0 },
+    } as EditorFile['meta2d']);
+  if (!Array.isArray(data.pens)) {
+    data.pens = [];
+  }
+  data.pens.forEach((pen) => {
+    upgradeFormPen(pen);
+  });
+  if (data.networks !== undefined && !Array.isArray(data.networks)) {
+    data.networks = [];
+  }
+  return data;
 }
 
 function mergeMockSources(defaultSources: CanvasSettings['mockSources'] = [], savedSources: CanvasSettings['mockSources'] = []) {
@@ -230,9 +299,24 @@ export function useMeta2dEditor() {
       cleanupChartTooltip = installChartHoverTooltip(container, meta2d);
       const penNetwork = meta2d.penNetwork.bind(meta2d);
       meta2d.penNetwork = (pen: Pen) => {
-        if (!pen.apiUrl && !pen.apiEnable) return;
-        meta2d!.store.data.networks = meta2d!.store.data.networks || [];
-        penNetwork(pen);
+        const networkPen = pen as Pen & { apiIndex?: number | string; apiUrl?: string };
+        const apiUrl = typeof networkPen.apiUrl === 'string' ? networkPen.apiUrl.trim() : '';
+        if (!apiUrl) return;
+        const networks = Array.isArray(meta2d!.store.data.networks) ? meta2d!.store.data.networks : [];
+        const httpNetworks = networks.filter((network) => network?.protocol === 'http');
+        const apiIndex = Number.isInteger(Number(networkPen.apiIndex)) && Number(networkPen.apiIndex) >= 0 ? Number(networkPen.apiIndex) : 0;
+        while (httpNetworks.length <= apiIndex) {
+          const network = { protocol: 'http' as const };
+          networks.push(network);
+          httpNetworks.push(network);
+        }
+        meta2d!.store.data.networks = networks;
+        networkPen.apiIndex = apiIndex;
+        try {
+          penNetwork(pen);
+        } catch (error) {
+          console.warn('Pen network initialization skipped', error);
+        }
       };
 
       meta2d.register(diagrams.commonPens() as unknown as Record<string, (pen: Pen, ctx?: CanvasRenderingContext2D) => Path2D>);
@@ -257,10 +341,13 @@ export function useMeta2dEditor() {
         meta2d?.on(event, () => {
           if (event === 'active') {
             if (settingsRef.current.drawingMode === 'line' || settingsRef.current.drawingMode === 'pencil') {
-              meta2d?.stopPencil();
-              meta2d?.drawLine('');
+              clearDrawingToolState(meta2d);
               setCanvasSettings((s) => ({ ...s, drawingMode: null }));
             }
+          }
+          if (event === 'drop' && meta2d) {
+            upgradeEchartsMapPens(meta2d);
+            syncEchartsExternalElements(meta2d);
           }
           refresh();
         });
@@ -439,12 +526,45 @@ export function useMeta2dEditor() {
     (pen: Pen, direction: -1 | 1) => {
       const meta2d = meta2dRef.current;
       if (!meta2d || !pen.id) return;
-      const list = meta2d.store.data.pens;
-      const index = list.findIndex((item) => item.id === pen.id);
-      const nextIndex = index + direction;
-      if (index < 0 || nextIndex < 0 || nextIndex >= list.length) return;
-      const [item] = list.splice(index, 1);
-      list.splice(nextIndex, 0, item);
+      const target = meta2d.findOne(pen.id);
+      if (!target) return;
+      if (direction > 0) {
+        meta2d.up([target]);
+      } else {
+        meta2d.down([target]);
+      }
+      normalizeLayerRendering(meta2d);
+      meta2d.active([target]);
+      meta2d.render();
+      refresh();
+    },
+    [refresh],
+  );
+
+  const topLayer = useCallback(
+    (pen: Pen) => {
+      const meta2d = meta2dRef.current;
+      if (!meta2d || !pen.id) return;
+      const target = meta2d.findOne(pen.id);
+      if (!target) return;
+      meta2d.top([target]);
+      normalizeLayerRendering(meta2d);
+      meta2d.active([target]);
+      meta2d.render();
+      refresh();
+    },
+    [refresh],
+  );
+
+  const bottomLayer = useCallback(
+    (pen: Pen) => {
+      const meta2d = meta2dRef.current;
+      if (!meta2d || !pen.id) return;
+      const target = meta2d.findOne(pen.id);
+      if (!target) return;
+      meta2d.bottom([target]);
+      normalizeLayerRendering(meta2d);
+      meta2d.active([target]);
       meta2d.render();
       refresh();
     },
@@ -632,6 +752,14 @@ export function useMeta2dEditor() {
         delete patch.data;
       }
 
+      if ((currentPen.name === 'table' || currentPen.name === 'table2') && config.targetProp === 'data') {
+        const tablePatch = buildUpdatedTablePatch(value);
+        Object.assign(patch, tablePatch);
+        if (!('data' in tablePatch)) {
+          delete patch.data;
+        }
+      }
+
       if (config.targetProp === 'value' && config.label) {
         const hasColon = config.label.trim().endsWith(':') || config.label.trim().endsWith('：');
         patch.text = `${config.label}${hasColon ? '' : '：'}${value}`;
@@ -649,9 +777,74 @@ export function useMeta2dEditor() {
     [refresh, selectedPen?.id],
   );
 
+  const applyPenEvents = useCallback(
+    (configs: PenEventConfig[]) => {
+      const meta2d = meta2dRef.current;
+      if (!meta2d || !selectedPen?.id) return;
+      const currentPen = meta2d.findOne(selectedPen.id);
+      if (!currentPen) return;
+      const previousConfigs = ((currentPen as Pen & { eventConfigs?: PenEventConfig[] }).eventConfigs || []) as PenEventConfig[];
+      stopRemovedEventAnimations(meta2d, currentPen, previousConfigs, configs);
+      const events = configs.map(createMeta2dEvent).filter(Boolean) as Record<string, unknown>[];
+      meta2d.setValue(
+        {
+          id: selectedPen.id,
+          eventConfigs: configs,
+          events,
+        } as unknown as Partial<Pen>,
+        { render: true, doEvent: false, history: true },
+      );
+      refresh();
+    },
+    [refresh, selectedPen?.id],
+  );
+
+  const applyAnimation = useCallback(
+    (patch: Partial<Pen>, options?: { restart?: boolean }) => {
+      const meta2d = meta2dRef.current;
+      if (!meta2d || !selectedPen?.id) return;
+      const current = meta2d.findOne(selectedPen.id);
+      if (!current) return;
+      meta2d.stopAnimate([current]);
+      meta2d.setValue({ id: selectedPen.id, ...patch }, { render: true, doEvent: false, history: true });
+      const next = meta2d.findOne(selectedPen.id);
+      if (next && options?.restart) {
+        meta2d.startAnimate([next]);
+      }
+      refresh();
+    },
+    [refresh, selectedPen?.id],
+  );
+
+  const playSelectedAnimation = useCallback(() => {
+    const meta2d = meta2dRef.current;
+    if (!meta2d || !selectedPen?.id) return;
+    const current = meta2d.findOne(selectedPen.id);
+    if (!current) return;
+    meta2d.startAnimate([current]);
+    refresh();
+  }, [refresh, selectedPen?.id]);
+
+  const pauseSelectedAnimation = useCallback(() => {
+    const meta2d = meta2dRef.current;
+    if (!meta2d || !selectedPen?.id) return;
+    const current = meta2d.findOne(selectedPen.id);
+    if (!current) return;
+    meta2d.pauseAnimate([current]);
+    refresh();
+  }, [refresh, selectedPen?.id]);
+
+  const stopSelectedAnimation = useCallback(() => {
+    const meta2d = meta2dRef.current;
+    if (!meta2d || !selectedPen?.id) return;
+    const current = meta2d.findOne(selectedPen.id);
+    if (!current) return;
+    meta2d.stopAnimate([current]);
+    refresh();
+  }, [refresh, selectedPen?.id]);
+
   const stopPencil = useCallback(() => {
-    meta2dRef.current?.stopPencil();
-    meta2dRef.current?.drawLine(''); // Also stop drawing line
+    clearDrawingToolState(meta2dRef.current);
     setCanvasSettings((s) => ({ ...s, drawingMode: null }));
   }, [setCanvasSettings]);
 
@@ -680,36 +873,63 @@ export function useMeta2dEditor() {
 
   useEffect(() => {
     if (!engineReady) return;
+    const cancelDrawingOnRightMouseDown = (e: MouseEvent) => {
+      const drawingMode = settingsRef.current.drawingMode;
+      if (e.button !== 2 || (drawingMode !== 'line' && drawingMode !== 'pencil')) return;
+      e.preventDefault();
+      e.stopPropagation();
+      clearDrawingToolState(meta2dRef.current);
+      setCanvasSettings((s) => ({ ...s, drawingMode: null }));
+      refresh();
+    };
+
     const handleContextMenu = (e: MouseEvent) => {
-      if (settingsRef.current.drawingMode === 'magnifier') {
+      const drawingMode = settingsRef.current.drawingMode;
+      if (drawingMode === 'line' || drawingMode === 'pencil') {
+        e.preventDefault();
+        e.stopPropagation();
+        clearDrawingToolState(meta2dRef.current);
+        setCanvasSettings((s) => ({ ...s, drawingMode: null }));
+        refresh();
+        return;
+      }
+      if (drawingMode === 'magnifier') {
         e.preventDefault();
         toggleMagnifier();
       }
     };
     const container = document.getElementById('meta2d');
     if (container) {
+      container.addEventListener('mousedown', cancelDrawingOnRightMouseDown, true);
       container.addEventListener('contextmenu', handleContextMenu);
     }
     return () => {
       if (container) {
+        container.removeEventListener('mousedown', cancelDrawingOnRightMouseDown, true);
         container.removeEventListener('contextmenu', handleContextMenu);
       }
     };
-  }, [engineReady, toggleMagnifier]);
+  }, [engineReady, refresh, setCanvasSettings, toggleMagnifier]);
 
 
   const actions = useMemo(
     () => ({
       addPen,
+      applyAnimation,
       applyCommunication,
+      applyPenEvents,
       changeZoom,
       deletePens,
       deleteSelectedPen,
       loadLocal,
       moveLayer,
+      topLayer,
+      bottomLayer,
       newFile,
       openFile,
       openData,
+      pauseSelectedAnimation,
+      playSelectedAnimation,
       publishJson,
       redo: () => meta2dRef.current?.redo(),
       saveLocal,
@@ -720,6 +940,7 @@ export function useMeta2dEditor() {
       drawingLine,
       drawingPencil,
       stopPencil,
+      stopSelectedAnimation,
       toggleMagnifier,
       toggleCanvasLock,
       toggleFullscreen,
@@ -731,7 +952,9 @@ export function useMeta2dEditor() {
     [
       activePen,
       addPen,
+      applyAnimation,
       applyCommunication,
+      applyPenEvents,
       changeZoom,
       deletePens,
       deleteSelectedPen,
@@ -740,6 +963,8 @@ export function useMeta2dEditor() {
       newFile,
       openFile,
       openData,
+      pauseSelectedAnimation,
+      playSelectedAnimation,
       publishJson,
       saveLocal,
       setCanvasSettings,
@@ -748,6 +973,7 @@ export function useMeta2dEditor() {
       drawingLine,
       drawingPencil,
       stopPencil,
+      stopSelectedAnimation,
       toggleMagnifier,
       toggleCanvasLock,
       toggleFullscreen,
@@ -766,6 +992,114 @@ export function useMeta2dEditor() {
     selectedPen,
     settings,
   };
+}
+
+const meta2dEventAction = {
+  link: 0,
+  setProps: 1,
+  startAnimate: 2,
+  pauseAnimate: 3,
+  stopAnimate: 4,
+  js: 5,
+  dialog: 14,
+} as const;
+
+function createMeta2dEvent(config: PenEventConfig) {
+  const action = meta2dEventAction[config.actionType];
+  const base = {
+    name: config.trigger,
+    action,
+  };
+
+  if (config.actionType === 'link') {
+    return {
+      ...base,
+      value: (config.url || '').trim(),
+      params: config.openMode || '_blank',
+    };
+  }
+
+  if (config.actionType === 'setProps') {
+    const value = tryParseJson(config.propsJson || '{}');
+    return {
+      ...base,
+      value: isRecord(value) ? value : {},
+      params: (config.targetId || '').trim() || undefined,
+    };
+  }
+
+  if (config.actionType === 'startAnimate') {
+    const targetId = (config.targetId || '').trim();
+    const animateName = (config.animateName || '').trim();
+    return {
+      ...base,
+      value: targetId || undefined,
+      params: animateName || undefined,
+      targetType: animateName ? 'id' : undefined,
+    };
+  }
+
+  if (config.actionType === 'pauseAnimate' || config.actionType === 'stopAnimate') {
+    return {
+      ...base,
+      value: (config.targetId || '').trim() || undefined,
+    };
+  }
+
+  if (config.actionType === 'dialog') {
+    return {
+      ...base,
+      value: (config.dialogTitle || '弹窗').trim(),
+      params: (config.dialogUrl || '').trim(),
+      extend: {
+        width: config.dialogWidth || 720,
+        height: config.dialogHeight || 480,
+      },
+    };
+  }
+
+  if (config.actionType === 'js') {
+    return {
+      ...base,
+      value: config.jsCode || '',
+    };
+  }
+
+  return null;
+}
+
+function stopRemovedEventAnimations(meta2d: Meta2d, pen: Pen, previousConfigs: PenEventConfig[], nextConfigs: PenEventConfig[]) {
+  const removedStartConfigs = previousConfigs.filter((previous) => {
+    if (previous.actionType !== 'startAnimate') return false;
+    return !nextConfigs.some((next) => isSameStartAnimationEvent(previous, next));
+  });
+  if (!removedStartConfigs.length) return;
+
+  const targets = new Set<Pen>();
+  removedStartConfigs.forEach((config) => {
+    getAnimationEventTargets(meta2d, pen, config).forEach((target) => targets.add(target));
+  });
+
+  if (!targets.size) return;
+  meta2d.stopAnimate([...targets]);
+  meta2d.render();
+}
+
+function isSameStartAnimationEvent(previous: PenEventConfig, next: PenEventConfig) {
+  return (
+    previous.id === next.id &&
+    previous.trigger === next.trigger &&
+    next.actionType === 'startAnimate' &&
+    (previous.targetId || '').trim() === (next.targetId || '').trim() &&
+    (previous.animateName || '').trim() === (next.animateName || '').trim()
+  );
+}
+
+function getAnimationEventTargets(meta2d: Meta2d, pen: Pen, config: PenEventConfig) {
+  const targetId = (config.targetId || '').trim();
+  if (!targetId) return [pen];
+  const matches = meta2d.find(targetId);
+  return matches.length ? matches : [];
 }
 
 function tryParseJson(value: string) {
@@ -855,6 +1189,47 @@ function buildUpdatedGaugePatch(input: unknown) {
   return value === null ? {} : { value };
 }
 
+function buildUpdatedTablePatch(input: unknown) {
+  const payload = pickTablePayload(input);
+  const patch: Record<string, unknown> = {};
+  const data = normalizeTableData(isRecord(payload) ? payload.data ?? payload.rows : payload);
+
+  if (data) {
+    patch.data = data;
+    patch.rowPos = undefined;
+    patch.colPos = undefined;
+    patch.tableWidth = undefined;
+    patch.tableHeight = undefined;
+    patch.initWorldRect = null;
+  }
+
+  if (isRecord(payload)) {
+    ['rowHeight', 'colWidth', 'maxNum'].forEach((key) => {
+      if (payload[key] !== undefined) patch[key] = payload[key];
+    });
+    ['hasHeader', 'stripe'].forEach((key) => {
+      if (payload[key] !== undefined) patch[key] = Boolean(payload[key]);
+    });
+    if (payload.stripeColor !== undefined) patch.stripeColor = String(payload.stripeColor);
+    if (Array.isArray(payload.styles)) {
+      patch.styles = payload.styles;
+      patch.initWorldRect = null;
+    }
+  }
+
+  return patch;
+}
+
+function pickTablePayload(input: unknown) {
+  if (!isRecord(input)) return input;
+  if (input.table !== undefined) return input.table;
+  if (isRecord(input.tables)) {
+    const firstTable = Object.values(input.tables)[0];
+    if (firstTable !== undefined) return firstTable;
+  }
+  return input;
+}
+
 function pickEchartsPayload(input: unknown, chartType: string, scope: ReturnType<typeof inferEchartsMapScope> = null) {
   if (!isRecord(input)) return input;
   const charts = isRecord(input.charts) ? input.charts : input;
@@ -933,6 +1308,11 @@ function normalizePointData(input: unknown): Array<{ name: string; value: number
       return value.length >= 2 ? { name: String(item.name ?? index + 1), value } : null;
     })
     .filter((item): item is { name: string; value: number[] } => Boolean(item));
+}
+
+function normalizeTableData(input: unknown) {
+  if (!Array.isArray(input)) return null;
+  return input.map((row) => (Array.isArray(row) ? row : [row]));
 }
 
 function setCategoryAxisData(axis: unknown, categories: string[]) {

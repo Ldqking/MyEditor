@@ -8,10 +8,22 @@ export function PenInspector({
   pen,
   onChange,
   onDelete,
+  onMoveUp,
+  onMoveDown,
+  onMoveTop,
+  onMoveBottom,
+  layerIndex,
+  layerTotal,
 }: {
   pen: Pen;
   onChange: (patch: Partial<Pen>) => void;
   onDelete: () => void;
+  onMoveUp: () => void;
+  onMoveDown: () => void;
+  onMoveTop: () => void;
+  onMoveBottom: () => void;
+  layerIndex: number;
+  layerTotal: number;
 }) {
   const numeric = (key: keyof Pen) => (event: ChangeEvent<HTMLInputElement>) => {
     onChange({ [key]: Number(event.target.value) } as Partial<Pen>);
@@ -218,6 +230,20 @@ export function PenInspector({
           onChange={(val) => onChange({ textColor: val })}
         />
       </Section>
+      <div className="field">
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+          <span>调整图元层级</span>
+          <span style={{ color: '#13ddea', fontSize: '12px' }}>
+            当前：{layerIndex}/{layerTotal}
+          </span>
+        </div>
+        <div className="button-row" style={{ gridTemplateColumns: 'repeat(4, 1fr)', marginBottom: '16px' }}>
+          <button title="置于顶层" onClick={onMoveTop} style={{ padding: '6px 0' }}>顶层</button>
+          <button title="上移一层" onClick={onMoveUp} style={{ padding: '6px 0' }}>上移</button>
+          <button title="下移一层" onClick={onMoveDown} style={{ padding: '6px 0' }}>下移</button>
+          <button title="置于底层" onClick={onMoveBottom} style={{ padding: '6px 0' }}>底层</button>
+        </div>
+      </div>
       <button className="danger-button" onClick={onDelete}>
         删除图元
       </button>

@@ -38,7 +38,9 @@ export interface CanvasSettings {
 export interface AssetItem {
   id: string;
   label: string;
-  icon: AssetIcon;
+  icon?: AssetIcon;
+  image?: string;
+  span?: number;
   createPen: () => Pen;
 }
 
@@ -70,4 +72,31 @@ export interface CommunicationConfig {
   mockValue: string;
   valuePath?: string;
   label?: string;
+}
+
+export type PenEventTrigger = 'enter' | 'click' | 'dblclick' | 'contextmenu' | 'active' | 'valueUpdate';
+
+export type PenEventActionType =
+  | 'link'
+  | 'setProps'
+  | 'startAnimate'
+  | 'pauseAnimate'
+  | 'stopAnimate'
+  | 'dialog'
+  | 'js';
+
+export interface PenEventConfig {
+  id: string;
+  trigger: PenEventTrigger;
+  actionType: PenEventActionType;
+  url?: string;
+  openMode?: '_self' | '_blank';
+  targetId?: string;
+  animateName?: string;
+  propsJson?: string;
+  dialogTitle?: string;
+  dialogUrl?: string;
+  dialogWidth?: number;
+  dialogHeight?: number;
+  jsCode?: string;
 }

@@ -149,17 +149,20 @@ function PenBindingPanel({
   const savedConfig = (selectedPen as Pen & { communication?: CommunicationConfig }).communication;
   const isEchartsPen = selectedPen.name === 'echarts';
   const isGaugePen = selectedPen.name === 'gauge';
+  const isTablePen = selectedPen.name === 'table' || selectedPen.name === 'table2';
   const supportsChartData = isEchartsPen || isGaugePen;
-  const availableSources = useMemo(
-    () => (supportsChartData ? sources : sources.filter((source) => !isChartMockSource(source))),
-    [sources, supportsChartData],
-  );
+  const supportsStructuredData = supportsChartData || isTablePen;
+  const availableSources = useMemo(() => {
+    if (isTablePen) return sources.filter((source) => !isChartMockSource(source));
+    if (supportsChartData) return sources.filter((source) => !isTableMockSource(source));
+    return sources.filter((source) => !isChartMockSource(source) && !isTableMockSource(source));
+  }, [sources, supportsChartData, isTablePen]);
   const initialSourceId =
     savedConfig?.sourceId && availableSources.some((source) => source.id === savedConfig.sourceId)
       ? savedConfig.sourceId
-      : getDefaultSourceId(availableSources, supportsChartData);
+      : getDefaultSourceId(availableSources, supportsChartData, isTablePen);
   const [sourceId, setSourceId] = useState(initialSourceId);
-  const [targetProp, setTargetProp] = useState<CommunicationConfig['targetProp']>(supportsChartData ? savedConfig?.targetProp || 'data' : savedConfig?.targetProp === 'data' ? 'text' : savedConfig?.targetProp || 'text');
+  const [targetProp, setTargetProp] = useState<CommunicationConfig['targetProp']>(getInitialTargetProp(savedConfig, supportsStructuredData));
   const [selectedPath, setSelectedPath] = useState(savedConfig?.valuePath || savedConfig?.variable || '');
   const [expandedPath, setExpandedPath] = useState('');
   const [label, setLabel] = useState(savedConfig?.label || '');
@@ -169,20 +172,21 @@ function PenBindingPanel({
     const nextSourceId =
       nextConfig?.sourceId && availableSources.some((source) => source.id === nextConfig.sourceId)
         ? nextConfig.sourceId
-        : getDefaultSourceId(availableSources, supportsChartData);
+        : getDefaultSourceId(availableSources, supportsChartData, isTablePen);
     setSourceId(nextSourceId);
-    setTargetProp(supportsChartData ? nextConfig?.targetProp || 'data' : nextConfig?.targetProp === 'data' ? 'text' : nextConfig?.targetProp || 'text');
+    setTargetProp(getInitialTargetProp(nextConfig, supportsStructuredData));
     setSelectedPath(nextConfig?.valuePath || nextConfig?.variable || '');
     setExpandedPath('');
     setLabel(nextConfig?.label || '');
-  }, [selectedPen.id, availableSources, supportsChartData]);
+  }, [selectedPen.id, availableSources, supportsChartData, isTablePen, supportsStructuredData]);
 
   const source = availableSources.find((item) => item.id === sourceId) || availableSources[0];
   const treeNodes = useMemo(() => {
     if (targetProp === 'data' && isEchartsPen) return getEchartsDataNodes(source?.payload, selectedPen);
-    if (targetProp === 'data' && selectedPen.name === 'gauge') return getGaugeDataNodes(source?.payload);
+    if (targetProp === 'data' && isGaugePen) return getGaugeDataNodes(source?.payload);
+    if (targetProp === 'data' && isTablePen) return getTableDataNodes(source?.payload);
     return flattenTreeNodes(source?.payload, '', 0, false);
-  }, [source, selectedPen, targetProp, isEchartsPen]);
+  }, [source, selectedPen, targetProp, isEchartsPen, isGaugePen, isTablePen]);
   const selectedNode = treeNodes.find((node) => node.path === selectedPath);
   const selectedValue = selectedNode ? selectedNode.value : source ? getByPath(source.payload, selectedPath) : undefined;
 
@@ -226,7 +230,7 @@ function PenBindingPanel({
             <option value="value">值</option>
             <option value="background">填充色</option>
             <option value="color">描边色</option>
-            {supportsChartData && <option value="data">图表数据</option>}
+            {supportsStructuredData && <option value="data">{isTablePen ? '表格数据' : '图表数据'}</option>}
           </select>
         </Label>
         {targetProp === 'value' && (
@@ -330,11 +334,23 @@ function isChartMockSource(source: MockDataSource) {
   return source.id === 'echarts-demo';
 }
 
-function getDefaultSourceId(sources: MockDataSource[], preferChartData: boolean) {
+function isTableMockSource(source: MockDataSource) {
+  return source.id === 'table-demo';
+}
+
+function getDefaultSourceId(sources: MockDataSource[], preferChartData: boolean, preferTableData: boolean) {
+  if (preferTableData) {
+    return sources.find(isTableMockSource)?.id || sources[0]?.id || '';
+  }
   if (preferChartData) {
     return sources.find(isChartMockSource)?.id || sources[0]?.id || '';
   }
   return sources[0]?.id || '';
+}
+
+function getInitialTargetProp(config: CommunicationConfig | undefined, supportsStructuredData: boolean): CommunicationConfig['targetProp'] {
+  if (supportsStructuredData) return config?.targetProp || 'data';
+  return config?.targetProp === 'data' ? 'text' : config?.targetProp || 'text';
 }
 
 function getEchartsDataNodes(value: unknown, pen: Pen): TreeNode[] {
@@ -367,6 +383,39 @@ function getGaugeDataNodes(value: unknown): TreeNode[] {
     { path: 'charts.gauge', label: '仪表盘数据', value: fallback, depth: 0, selectable: true },
     { path: 'charts.gauge.value', label: '仪表盘数值', value: fallback.value, depth: 0, selectable: true },
   ];
+}
+
+function getTableDataNodes(value: unknown): TreeNode[] {
+  const nodes = [
+    { path: 'table', label: '表格数据' },
+    { path: 'table.data', label: '表格行数据' },
+    { path: 'data', label: '表格行数据' },
+    { path: 'rows', label: '表格行数据' },
+  ]
+    .map((item) => ({
+      path: item.path,
+      label: item.label,
+      value: getByPath(value, item.path),
+      depth: 0,
+      selectable: true,
+    }))
+    .filter((node) => node.value !== undefined);
+
+  if (nodes.length) return dedupeTreeNodes(nodes);
+  if (Array.isArray(value)) {
+    return [{ path: 'data', label: '表格行数据', value, depth: 0, selectable: true }];
+  }
+  return [];
+}
+
+function dedupeTreeNodes(nodes: TreeNode[]) {
+  const seen = new Set<string>();
+  return nodes.filter((node) => {
+    const key = `${node.path}:${serializeValue(node.value)}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 function getEchartsChartType(pen: Pen) {

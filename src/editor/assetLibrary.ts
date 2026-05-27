@@ -40,6 +40,140 @@ function pen(input: Pen): Pen {
   return JSON.parse(JSON.stringify({ ...basePen, ...input }));
 }
 
+function currentTimeText() {
+  const date = new Date();
+  const pad = (value: number) => String(value).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+}
+
+const defaultTableData = [
+  ['设备', '状态', '数值'],
+  ['冷却塔', '运行', '86%'],
+  ['水泵', '待机', '42%'],
+  ['阀门', '告警', '12%'],
+];
+
+const defaultTableStyles = [
+  { row: 0, background: 'rgba(19, 221, 234, 0.24)', color: '#38dfff', textColor: '#f2feff', fontWeight: 700 },
+  { col: 0, textAlign: 'center' },
+  { col: 2, textAlign: 'center', color: '#ffd166', textColor: '#ffd166' },
+];
+
+function formTablePen(): Pen {
+  return pen({
+    name: 'table',
+    text: '',
+    width: 320,
+    height: 156,
+    color: '#9FB3BD',
+    background: 'rgba(11, 40, 54, 0.78)',
+    textColor: '#e9fbff',
+    hoverColor: '#0d848dff',
+    hoverBackground: 'rgba(19, 221, 234, 0.18)',
+    activeColor: '#0c757cff',
+    activeBackground: 'rgba(13, 106, 114, 0.22)',
+    fontSize: 12,
+    rowHeight: 36,
+    colWidth: 106,
+    hasHeader: true,
+    stripe: true,
+    stripeColor: 'rgba(56, 223, 255, 0.08)',
+    data: defaultTableData,
+    styles: defaultTableStyles,
+  } as Pen);
+}
+
+function normalizeFormTableStyles(styles: unknown) {
+  const sourceStyles = Array.isArray(styles) ? styles : defaultTableStyles;
+  let changed = !Array.isArray(styles);
+  const normalized = sourceStyles.map((style) => {
+    if (!style || typeof style !== 'object' || Array.isArray(style)) return style;
+    const next = { ...style } as Record<string, unknown>;
+    const col = Number(next.col);
+    if ((col === 0 || col === 2) && next.textAlign !== 'center') {
+      next.textAlign = 'center';
+      changed = true;
+    }
+    return next;
+  });
+  const hasFirstColStyle = normalized.some((style) => Boolean(style && typeof style === 'object' && !Array.isArray(style) && Number((style as Record<string, unknown>).col) === 0));
+  const hasLastColStyle = normalized.some((style) => Boolean(style && typeof style === 'object' && !Array.isArray(style) && Number((style as Record<string, unknown>).col) === 2));
+
+  if (!hasFirstColStyle) {
+    normalized.push({ col: 0, textAlign: 'center' });
+    changed = true;
+  }
+
+  if (!hasLastColStyle) {
+    normalized.push({ col: 2, textAlign: 'center', color: '#ffd166', textColor: '#ffd166' });
+    changed = true;
+  }
+
+  return { styles: normalized, changed };
+}
+
+export function upgradeFormPen(input: Pen) {
+  const formPen = input as Pen & Record<string, unknown>;
+  let upgraded = false;
+
+  if (input.name === 'time') {
+    const defaults = {
+      text: currentTimeText(),
+      width: 210,
+      height: 46,
+      background: 'rgba(11, 40, 54, 0.78)',
+      color: '#38dfff',
+      textColor: '#e9fbff',
+      fontSize: 15,
+      timeFormat: '`${year}-${month}-${day} ${hours}:${minutes}:${seconds}`',
+      fillZero: true,
+      timeout: 1000,
+    };
+
+    Object.entries(defaults).forEach(([key, value]) => {
+      if (formPen[key] !== undefined && formPen[key] !== '') return;
+      formPen[key] = value;
+      upgraded = true;
+    });
+  }
+
+  if (input.name === 'table' || input.name === 'table2') {
+    const defaults = formTablePen() as Pen & Record<string, unknown>;
+    const needsData = !Array.isArray(formPen.data) || !Array.isArray((formPen.data as unknown[])[0]);
+    const keys = ['width', 'height', 'color', 'background', 'textColor', 'fontSize', 'rowHeight', 'colWidth', 'hasHeader', 'stripe', 'stripeColor', 'styles'];
+
+    if (needsData) {
+      formPen.data = defaults.data;
+      formPen.rowPos = undefined;
+      formPen.colPos = undefined;
+      formPen.tableWidth = undefined;
+      formPen.tableHeight = undefined;
+      formPen.initWorldRect = undefined;
+      upgraded = true;
+    }
+
+    keys.forEach((key) => {
+      if (formPen[key] !== undefined && formPen[key] !== '') return;
+      formPen[key] = defaults[key];
+      upgraded = true;
+    });
+
+    const normalizedStyles = normalizeFormTableStyles(formPen.styles);
+    if (normalizedStyles.changed) {
+      formPen.styles = normalizedStyles.styles;
+      upgraded = true;
+    }
+
+    if (upgraded && formPen.calculative && typeof formPen.calculative === 'object') {
+      const calculative = formPen.calculative as Record<string, unknown>;
+      calculative.texts = undefined;
+      calculative.isUpdateData = true;
+    }
+  }
+
+  return upgraded;
+}
+
 function axisOption(data: number[]) {
   return {
     xAxisData: ['A', 'B', 'C', 'D', 'E'],
@@ -569,26 +703,25 @@ export const assetGroups: AssetGroup[] = [
     id: 'common',
     title: '常用图元',
     defaultCollapsed: false,
-    items: [
-      { id: 'rectangle', label: '矩形', icon: 'square', createPen: () => pen({ name: 'rectangle', text: 'RECT_01', width: 140, height: 90 }) },
-      { id: 'circle', label: '圆形', icon: 'circle', createPen: () => pen({ name: 'circle', text: 'CIRCLE_01', width: 110, height: 110 }) },
-      { id: 'diamond', label: '菱形', icon: 'diamond', createPen: () => pen({ name: 'diamond', text: 'DATA_CORE_01', width: 140, height: 90 }) },
-    ],
+    items: [],
   },
   {
     id: 'basic',
     title: '基础图形',
     defaultCollapsed: false,
     items: [
-      { id: 'triangle', label: '三角形', icon: 'triangle', createPen: () => pen({ name: 'triangle', text: 'TRIANGLE', width: 130, height: 100 }) },
-      { id: 'pentagon', label: '五边形', icon: 'pentagon', createPen: () => pen({ name: 'pentagon', text: 'PENTAGON', width: 130, height: 105 }) },
-      { id: 'pentagram', label: '星形', icon: 'star', createPen: () => pen({ name: 'pentagram', text: 'STAR', width: 120, height: 115 }) },
-      { id: 'leftArrow', label: '左箭头', icon: 'arrow-left', createPen: () => pen({ name: 'leftArrow', text: '', width: 150, height: 70 }) },
-      { id: 'rightArrow', label: '右箭头', icon: 'arrow-right', createPen: () => pen({ name: 'rightArrow', text: '', width: 150, height: 70 }) },
-      { id: 'twowayArrow', label: '双向箭头', icon: 'arrow-both', createPen: () => pen({ name: 'twowayArrow', text: '', width: 170, height: 70 }) },
-      { id: 'hexagon', label: '六边形', icon: 'pentagon', createPen: () => pen({ name: 'hexagon', text: 'HEX', width: 130, height: 100 }) },
-      { id: 'cloud', label: '云', icon: 'activity', createPen: () => pen({ name: 'cloud', text: 'CLOUD', width: 150, height: 95 }) },
-      { id: 'message', label: '消息', icon: 'square', createPen: () => pen({ name: 'message', text: 'MESSAGE', width: 150, height: 90 }) },
+      { id: 'rectangle', label: '矩形', image: '/img/basis/rectangle.png', createPen: () => pen({ name: 'rectangle', text: 'RECT_01', width: 140, height: 90 }) },
+      { id: 'circle', label: '圆形', image: '/img/basis/circle.png', createPen: () => pen({ name: 'circle', text: 'CIRCLE_01', width: 110, height: 110 }) },
+      { id: 'diamond', label: '菱形', image: '/img/basis/diamond.png', createPen: () => pen({ name: 'diamond', text: 'DATA_CORE_01', width: 140, height: 90 }) },
+      { id: 'triangle', label: '三角形', image: '/img/basis/triangle.png', createPen: () => pen({ name: 'triangle', text: 'TRIANGLE', width: 130, height: 100 }) },
+      { id: 'pentagon', label: '五边形', image: '/img/basis/pentagon.png', createPen: () => pen({ name: 'pentagon', text: 'PENTAGON', width: 130, height: 105 }) },
+      { id: 'pentagram', label: '星形', image: '/img/basis/pentagram.png', createPen: () => pen({ name: 'pentagram', text: 'STAR', width: 120, height: 115 }) },
+      { id: 'leftArrow', label: '左箭头', image: '/img/basis/leftArrow.png', createPen: () => pen({ name: 'leftArrow', text: '', width: 150, height: 70 }) },
+      { id: 'rightArrow', label: '右箭头', image: '/img/basis/rightArrow.png', createPen: () => pen({ name: 'rightArrow', text: '', width: 150, height: 70 }) },
+      { id: 'twowayArrow', label: '双向箭头', image: '/img/basis/twowayArrow.png', createPen: () => pen({ name: 'twowayArrow', text: '', width: 170, height: 70 }) },
+      { id: 'hexagon', label: '六边形', image: '/img/basis/hexagon.png', createPen: () => pen({ name: 'hexagon', text: 'HEX', width: 130, height: 100 }) },
+      { id: 'cloud', label: '云', image: '/img/basis/cloud.png', createPen: () => pen({ name: 'cloud', text: 'CLOUD', width: 150, height: 95 }) },
+      { id: 'message', label: '消息', image: '/img/basis/message.png', createPen: () => pen({ name: 'message', text: 'MESSAGE', width: 150, height: 90 }) },
     ],
   },
   {
@@ -596,12 +729,12 @@ export const assetGroups: AssetGroup[] = [
     title: '流程图',
     defaultCollapsed: true,
     items: [
-      { id: 'flowData', label: '数据', icon: 'diamond', createPen: () => pen({ name: 'flowData', text: '数据', width: 140, height: 90 }) },
-      { id: 'flowDocument', label: '文档', icon: 'square', createPen: () => pen({ name: 'flowDocument', text: '文档', width: 150, height: 100 }) },
-      { id: 'flowQueue', label: '队列', icon: 'square', createPen: () => pen({ name: 'flowQueue', text: '队列', width: 150, height: 90 }) },
-      { id: 'flowDb', label: '数据库', icon: 'warehouse', createPen: () => pen({ name: 'flowDb', text: 'DB', width: 140, height: 100 }) },
-      { id: 'flowSubprocess', label: '子流程', icon: 'square', createPen: () => pen({ name: 'flowSubprocess', text: '子流程', width: 160, height: 90 }) },
-      { id: 'flowParallel', label: '并行', icon: 'square', createPen: () => pen({ name: 'flowParallel', text: '并行', width: 150, height: 90 }) },
+      { id: 'flowData', label: '数据', image: '/img/flow/flowData.png', createPen: () => pen({ name: 'flowData', text: '数据', width: 140, height: 90 }) },
+      { id: 'flowDocument', label: '文档', image: '/img/flow/flowDocument.png', createPen: () => pen({ name: 'flowDocument', text: '文档', width: 150, height: 100 }) },
+      { id: 'flowQueue', label: '队列', image: '/img/flow/flowQueue.png', createPen: () => pen({ name: 'flowQueue', text: '队列', width: 150, height: 90 }) },
+      { id: 'flowDb', label: '数据库', image: '/img/flow/flowDb.png', createPen: () => pen({ name: 'flowDb', text: 'DB', width: 140, height: 100 }) },
+      { id: 'flowSubprocess', label: '子流程', image: '/img/flow/flowSubprocess.png', createPen: () => pen({ name: 'flowSubprocess', text: '子流程', width: 160, height: 90 }) },
+      { id: 'flowParallel', label: '并行', image: '/img/flow/flowParallel.png', createPen: () => pen({ name: 'flowParallel', text: '并行', width: 150, height: 90 }) },
     ],
   },
   {
@@ -609,27 +742,41 @@ export const assetGroups: AssetGroup[] = [
     title: 'UML/活动图',
     defaultCollapsed: true,
     items: [
-      { id: 'swimlaneH', label: '横向泳道', icon: 'activity', createPen: () => pen({ name: 'swimlaneH', text: '泳道', width: 260, height: 160 }) },
-      { id: 'swimlaneV', label: '纵向泳道', icon: 'activity', createPen: () => pen({ name: 'swimlaneV', text: '泳道', width: 180, height: 240 }) },
-      { id: 'simpleClass', label: '类', icon: 'square', createPen: () => pen({ name: 'simpleClass', text: 'User|+ name\\n+ role|- login()', width: 180, height: 140 }) },
-      { id: 'interfaceClass', label: '接口', icon: 'square', createPen: () => pen({ name: 'interfaceClass', text: 'IService|+ run()', width: 180, height: 130 }) },
-      { id: 'lifeline', label: '生命线', icon: 'activity', createPen: () => pen({ name: 'lifeline', text: 'Service', width: 120, height: 220 }) },
-      { id: 'sequenceFocus', label: '激活条', icon: 'activity', createPen: () => pen({ name: 'sequenceFocus', text: '', width: 36, height: 170 }) },
+      { id: 'swimlaneH', label: '横向泳道', image: '/img/uml/swimlaneH.png', createPen: () => pen({ name: 'swimlaneH', text: '泳道', width: 260, height: 160 }) },
+      { id: 'swimlaneV', label: '纵向泳道', image: '/img/uml/swimlaneV.png', createPen: () => pen({ name: 'swimlaneV', text: '泳道', width: 180, height: 240 }) },
+      { id: 'simpleClass', label: '类', image: '/img/uml/simpleClass.png', createPen: () => pen({ name: 'simpleClass', text: 'User|+ name\\n+ role|- login()', width: 180, height: 140 }) },
+      { id: 'interfaceClass', label: '接口', image: '/img/uml/interfaceClass.png', createPen: () => pen({ name: 'interfaceClass', text: 'IService|+ run()', width: 180, height: 130 }) },
+      { id: 'lifeline', label: '生命线', image: '/img/uml/lifeline.png', createPen: () => pen({ name: 'lifeline', text: 'Service', width: 120, height: 220 }) },
+      { id: 'sequenceFocus', label: '激活条', image: '/img/uml/sequenceFocus.png', createPen: () => pen({ name: 'sequenceFocus', text: '', width: 36, height: 170 }) },
     ],
   },
-  // {
-  //   id: 'form',
-  //   title: '表单控件',
-  //   defaultCollapsed: true,
-  //   items: [
-  //     { id: 'switch', label: '开关', icon: 'switch', createPen: () => pen({ name: 'switch', text: '', width: 78, height: 34, checked: true }) },
-  //     { id: 'slider', label: '滑块', icon: 'slider', createPen: () => pen({ name: 'slider', text: '', width: 180, height: 34, value: 62 } as Pen) },
-  //     { id: 'checkbox', label: '复选框', icon: 'checkbox', createPen: () => pen({ name: 'checkbox', text: '确认', width: 130, height: 42, checked: true }) },
-  //     { id: 'radio', label: '单选框', icon: 'circle', createPen: () => pen({ name: 'radio', text: '选项', width: 130, height: 42, checked: true }) },
-  //     { id: 'time', label: '时间', icon: 'square', createPen: () => pen({ name: 'time', text: '', width: 170, height: 48 }) },
-  //     { id: 'table', label: '表格', icon: 'square', createPen: () => pen({ name: 'table', text: '', width: 260, height: 150 }) },
-  //   ],
-  // },
+  {
+    id: 'form',
+    title: '表单控件',
+    defaultCollapsed: true,
+    items: [
+      {
+        id: 'time',
+        label: '时间',
+        image: '/img/form/time.png',
+        createPen: () =>
+          pen({
+            name: 'time',
+            text: currentTimeText(),
+            width: 210,
+            height: 46,
+            background: 'rgba(11, 40, 54, 0.78)',
+            color: '#38dfff',
+            textColor: '#e9fbff',
+            fontSize: 15,
+            timeFormat: '`${year}-${month}-${day} ${hours}:${minutes}:${seconds}`',
+            fillZero: true,
+            timeout: 1000,
+          } as Pen),
+      },
+      { id: 'table', label: '表格', image: '/img/form/table.png', createPen: formTablePen },
+    ],
+  },
   {
     id: 'charts',
     title: 'ECharts图表',
@@ -638,7 +785,7 @@ export const assetGroups: AssetGroup[] = [
       {
         id: 'echartsBar',
         label: 'ECharts柱图',
-        icon: 'chart',
+        image: '/img/echarts/echartsBar.png',
         createPen: () =>
           pen({
             name: 'echarts',
@@ -652,7 +799,7 @@ export const assetGroups: AssetGroup[] = [
       {
         id: 'echartsLine',
         label: 'ECharts折线',
-        icon: 'chart',
+        image: '/img/echarts/echartsLine.png',
         createPen: () =>
           pen({
             name: 'echarts',
@@ -666,7 +813,7 @@ export const assetGroups: AssetGroup[] = [
       {
         id: 'echartsPie',
         label: 'ECharts饼图',
-        icon: 'chart',
+        image: '/img/echarts/echartsPie.png',
         createPen: () =>
           pen({
             name: 'echarts',
@@ -680,7 +827,7 @@ export const assetGroups: AssetGroup[] = [
       {
         id: 'gauge',
         label: '仪表盘',
-        icon: 'chart',
+        image: '/img/echarts/gauge.png',
         createPen: () =>
           pen({
             name: 'gauge',
@@ -702,7 +849,7 @@ export const assetGroups: AssetGroup[] = [
       {
         id: 'echartsMapRegion',
         label: 'ECharts地图',
-        icon: 'map',
+        image: '/img/echarts/echartsMapRegion.png',
         createPen: () =>
           pen({
             name: 'echarts',
@@ -716,7 +863,7 @@ export const assetGroups: AssetGroup[] = [
       {
         id: 'echartsMapScatter',
         label: '地图点位',
-        icon: 'map',
+        image: '/img/echarts/echartsMapScatter.png',
         createPen: () =>
           pen({
             name: 'echarts',
@@ -730,7 +877,7 @@ export const assetGroups: AssetGroup[] = [
       {
         id: 'echartsMapFlow',
         label: '地图线路',
-        icon: 'map',
+        image: '/img/echarts/echartsMapFlow.png',
         createPen: () =>
           pen({
             name: 'echarts',
@@ -744,7 +891,7 @@ export const assetGroups: AssetGroup[] = [
       {
         id: 'echartsShanxiMap',
         label: '山西地图',
-        icon: 'map',
+        image: '/img/echarts/echartsShanxiMap.png',
         createPen: () =>
           pen({
             name: 'echarts',
@@ -758,7 +905,7 @@ export const assetGroups: AssetGroup[] = [
       {
         id: 'echartsShanxiScatter',
         label: '山西点位',
-        icon: 'map',
+        image: '/img/echarts/echartsShanxiScatter.png',
         createPen: () =>
           pen({
             name: 'echarts',
@@ -769,45 +916,43 @@ export const assetGroups: AssetGroup[] = [
             echarts: echartsMapConfig('shanxi', 'scatter'),
           } as Pen),
       },
-      // { id: 'lineChart', label: '折线图', icon: 'chart', createPen: () => pen({ name: 'lineChart', text: '', width: 260, height: 180, smooth: true, ...axisOption([12, 32, 24, 46, 38]) } as Pen) },
-      // { id: 'histogram', label: '柱状图', icon: 'chart', createPen: () => pen({ name: 'histogram', text: '', width: 260, height: 180, ...axisOption([22, 42, 31, 56, 34]) } as Pen) },
-      // {
-      //   id: 'pieChart',
-      //   label: '饼图',
-      //   icon: 'chart',
-      //   createPen: () =>
-      //     pen({
-      //       name: 'pieChart',
-      //       text: '',
-      //       width: 220,
-      //       height: 190,
-      //       data: [[{ name: 'A', value: 28 }, { name: 'B', value: 42 }, { name: 'C', value: 30 }]],
-      //       chartsColor: chartColors,
-      //       chartsRadius: [['35%', '68%']],
-      //       tickLabel: { show: true, color: '#d8e1e7', fontSize: 11 },
-      //     } as Pen),
-      // },
-      // {
-      //   id: 'heatmap',
-      //   label: '热力图',
-      //   icon: 'chart',
-      //   createPen: () =>
-      //     pen({
-      //       name: 'heatmap',
-      //       text: '',
-      //       width: 240,
-      //       height: 170,
-      //       min: 0,
-      //       max: 100,
-      //       chartsColor: ['#12343b', '#13ddea', '#ffd166'],
-      //       data: [
-      //         [8, 24, 46, 70, 92],
-      //         [16, 38, 64, 80, 58],
-      //         [28, 52, 75, 62, 34],
-      //         [10, 44, 68, 88, 95],
-      //       ],
-      //     } as Pen),
-      // },
+    ],
+  },
+  {
+    id: 'device',
+    title: '设备图元',
+    defaultCollapsed: true,
+    items: Array.from({ length: 12 }).map((_, i) => ({
+      id: `device${i + 1}`,
+      label: `设备${i + 1}`,
+      image: `/img/device/device${i + 1}.png`,
+      createPen: () => pen({ name: 'image', image: `/img/device/device${i + 1}.png`, width: 100, height: 100 }),
+    })),
+  },
+  {
+    id: 'bigscreen',
+    title: '大屏图元',
+    defaultCollapsed: true,
+    items: [
+      {
+        id: 'title',
+        label: '标题',
+        image: '/img/bigscreen/title.png',
+        span: 3,
+        createPen: () => pen({ name: 'image', image: '/img/bigscreen/title.png', width: 1000, height: 100 }),
+      },
+      {
+        id: 'card1',
+        label: '卡片1',
+        image: '/img/bigscreen/card1.png',
+        createPen: () => pen({ name: 'image', image: '/img/bigscreen/card1.png', width: 400, height: 300 }),
+      },
+      {
+        id: 'card2',
+        label: '卡片2',
+        image: '/img/bigscreen/card2.png',
+        createPen: () => pen({ name: 'image', image: '/img/bigscreen/card2.png', width: 400, height: 300 }),
+      },
     ],
   },
 ];
@@ -945,6 +1090,32 @@ export const initialSettings: CanvasSettings = {
             max: 100,
             unit: '%',
           },
+        },
+      },
+    },
+    {
+      id: 'table-demo',
+      name: '表格测试数据',
+      description: '表格控件专用 mock 数据',
+      payload: {
+        table: {
+          data: [
+            ['设备', '状态', '数值', '其他'],
+            ['冷却塔', '运行', '86%', '很好'],
+            ['水泵', '待机', '42%', '良好'],
+            ['阀门', '告警', '12%', '一般'],
+            ['风机', '在线', '73%', ''],
+            ['冷却塔', '运行', '86%', '很好'],
+            ['水泵', '待机', '42%', '良好'],
+            ['阀门', '告警', '12%', '一般'],
+            ['风机', '在线', '73%', ''],
+          ],
+          rowHeight: 36,
+          colWidth: 106,
+          hasHeader: true,
+          stripe: true,
+          stripeColor: 'rgba(56, 223, 255, 0.08)',
+          styles: defaultTableStyles,
         },
       },
     },
