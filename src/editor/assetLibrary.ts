@@ -710,18 +710,18 @@ export const assetGroups: AssetGroup[] = [
     title: '基础图形',
     defaultCollapsed: false,
     items: [
-      { id: 'rectangle', label: '矩形', image: '/img/basis/rectangle.png', createPen: () => pen({ name: 'rectangle', text: 'RECT_01', width: 140, height: 90 }) },
-      { id: 'circle', label: '圆形', image: '/img/basis/circle.png', createPen: () => pen({ name: 'circle', text: 'CIRCLE_01', width: 110, height: 110 }) },
-      { id: 'diamond', label: '菱形', image: '/img/basis/diamond.png', createPen: () => pen({ name: 'diamond', text: 'DATA_CORE_01', width: 140, height: 90 }) },
-      { id: 'triangle', label: '三角形', image: '/img/basis/triangle.png', createPen: () => pen({ name: 'triangle', text: 'TRIANGLE', width: 130, height: 100 }) },
-      { id: 'pentagon', label: '五边形', image: '/img/basis/pentagon.png', createPen: () => pen({ name: 'pentagon', text: 'PENTAGON', width: 130, height: 105 }) },
-      { id: 'pentagram', label: '星形', image: '/img/basis/pentagram.png', createPen: () => pen({ name: 'pentagram', text: 'STAR', width: 120, height: 115 }) },
-      { id: 'leftArrow', label: '左箭头', image: '/img/basis/leftArrow.png', createPen: () => pen({ name: 'leftArrow', text: '', width: 150, height: 70 }) },
-      { id: 'rightArrow', label: '右箭头', image: '/img/basis/rightArrow.png', createPen: () => pen({ name: 'rightArrow', text: '', width: 150, height: 70 }) },
-      { id: 'twowayArrow', label: '双向箭头', image: '/img/basis/twowayArrow.png', createPen: () => pen({ name: 'twowayArrow', text: '', width: 170, height: 70 }) },
-      { id: 'hexagon', label: '六边形', image: '/img/basis/hexagon.png', createPen: () => pen({ name: 'hexagon', text: 'HEX', width: 130, height: 100 }) },
-      { id: 'cloud', label: '云', image: '/img/basis/cloud.png', createPen: () => pen({ name: 'cloud', text: 'CLOUD', width: 150, height: 95 }) },
-      { id: 'message', label: '消息', image: '/img/basis/message.png', createPen: () => pen({ name: 'message', text: 'MESSAGE', width: 150, height: 90 }) },
+      { id: 'rectangle', label: '矩形', image: './img/basis/rectangle.png', createPen: () => pen({ name: 'rectangle', text: 'RECT_01', width: 140, height: 90 }) },
+      { id: 'circle', label: '圆形', image: './img/basis/circle.png', createPen: () => pen({ name: 'circle', text: 'CIRCLE_01', width: 110, height: 110 }) },
+      { id: 'diamond', label: '菱形', image: './img/basis/diamond.png', createPen: () => pen({ name: 'diamond', text: 'DATA_CORE_01', width: 140, height: 90 }) },
+      { id: 'triangle', label: '三角形', image: './img/basis/triangle.png', createPen: () => pen({ name: 'triangle', text: 'TRIANGLE', width: 130, height: 100 }) },
+      { id: 'pentagon', label: '五边形', image: './img/basis/pentagon.png', createPen: () => pen({ name: 'pentagon', text: 'PENTAGON', width: 130, height: 105 }) },
+      { id: 'pentagram', label: '星形', image: './img/basis/pentagram.png', createPen: () => pen({ name: 'pentagram', text: 'STAR', width: 120, height: 115 }) },
+      { id: 'leftArrow', label: '左箭头', image: './img/basis/leftArrow.png', createPen: () => pen({ name: 'leftArrow', text: '', width: 150, height: 70 }) },
+      { id: 'rightArrow', label: '右箭头', image: './img/basis/rightArrow.png', createPen: () => pen({ name: 'rightArrow', text: '', width: 150, height: 70 }) },
+      { id: 'twowayArrow', label: '双向箭头', image: './img/basis/twowayArrow.png', createPen: () => pen({ name: 'twowayArrow', text: '', width: 170, height: 70 }) },
+      { id: 'hexagon', label: '六边形', image: './img/basis/hexagon.png', createPen: () => pen({ name: 'hexagon', text: 'HEX', width: 130, height: 100 }) },
+      { id: 'cloud', label: '云', image: './img/basis/cloud.png', createPen: () => pen({ name: 'cloud', text: 'CLOUD', width: 150, height: 95 }) },
+      { id: 'message', label: '消息', image: './img/basis/message.png', createPen: () => pen({ name: 'message', text: 'MESSAGE', width: 150, height: 90 }) },
     ],
   },
   {
@@ -729,12 +729,12 @@ export const assetGroups: AssetGroup[] = [
     title: '流程图',
     defaultCollapsed: true,
     items: [
-      { id: 'flowData', label: '数据', image: '/img/flow/flowData.png', createPen: () => pen({ name: 'flowData', text: '数据', width: 140, height: 90 }) },
-      { id: 'flowDocument', label: '文档', image: '/img/flow/flowDocument.png', createPen: () => pen({ name: 'flowDocument', text: '文档', width: 150, height: 100 }) },
-      { id: 'flowQueue', label: '队列', image: '/img/flow/flowQueue.png', createPen: () => pen({ name: 'flowQueue', text: '队列', width: 150, height: 90 }) },
-      { id: 'flowDb', label: '数据库', image: '/img/flow/flowDb.png', createPen: () => pen({ name: 'flowDb', text: 'DB', width: 140, height: 100 }) },
-      { id: 'flowSubprocess', label: '子流程', image: '/img/flow/flowSubprocess.png', createPen: () => pen({ name: 'flowSubprocess', text: '子流程', width: 160, height: 90 }) },
-      { id: 'flowParallel', label: '并行', image: '/img/flow/flowParallel.png', createPen: () => pen({ name: 'flowParallel', text: '并行', width: 150, height: 90 }) },
+      { id: 'flowData', label: '数据', image: './img/flow/flowData.png', createPen: () => pen({ name: 'flowData', text: '数据', width: 140, height: 90 }) },
+      { id: 'flowDocument', label: '文档', image: './img/flow/flowDocument.png', createPen: () => pen({ name: 'flowDocument', text: '文档', width: 150, height: 100 }) },
+      { id: 'flowQueue', label: '队列', image: './img/flow/flowQueue.png', createPen: () => pen({ name: 'flowQueue', text: '队列', width: 150, height: 90 }) },
+      { id: 'flowDb', label: '数据库', image: './img/flow/flowDb.png', createPen: () => pen({ name: 'flowDb', text: 'DB', width: 140, height: 100 }) },
+      { id: 'flowSubprocess', label: '子流程', image: './img/flow/flowSubprocess.png', createPen: () => pen({ name: 'flowSubprocess', text: '子流程', width: 160, height: 90 }) },
+      { id: 'flowParallel', label: '并行', image: './img/flow/flowParallel.png', createPen: () => pen({ name: 'flowParallel', text: '并行', width: 150, height: 90 }) },
     ],
   },
   {
@@ -742,12 +742,12 @@ export const assetGroups: AssetGroup[] = [
     title: 'UML/活动图',
     defaultCollapsed: true,
     items: [
-      { id: 'swimlaneH', label: '横向泳道', image: '/img/uml/swimlaneH.png', createPen: () => pen({ name: 'swimlaneH', text: '泳道', width: 260, height: 160 }) },
-      { id: 'swimlaneV', label: '纵向泳道', image: '/img/uml/swimlaneV.png', createPen: () => pen({ name: 'swimlaneV', text: '泳道', width: 180, height: 240 }) },
-      { id: 'simpleClass', label: '类', image: '/img/uml/simpleClass.png', createPen: () => pen({ name: 'simpleClass', text: 'User|+ name\\n+ role|- login()', width: 180, height: 140 }) },
-      { id: 'interfaceClass', label: '接口', image: '/img/uml/interfaceClass.png', createPen: () => pen({ name: 'interfaceClass', text: 'IService|+ run()', width: 180, height: 130 }) },
-      { id: 'lifeline', label: '生命线', image: '/img/uml/lifeline.png', createPen: () => pen({ name: 'lifeline', text: 'Service', width: 120, height: 220 }) },
-      { id: 'sequenceFocus', label: '激活条', image: '/img/uml/sequenceFocus.png', createPen: () => pen({ name: 'sequenceFocus', text: '', width: 36, height: 170 }) },
+      { id: 'swimlaneH', label: '横向泳道', image: './img/uml/swimlaneH.png', createPen: () => pen({ name: 'swimlaneH', text: '泳道', width: 260, height: 160 }) },
+      { id: 'swimlaneV', label: '纵向泳道', image: './img/uml/swimlaneV.png', createPen: () => pen({ name: 'swimlaneV', text: '泳道', width: 180, height: 240 }) },
+      { id: 'simpleClass', label: '类', image: './img/uml/simpleClass.png', createPen: () => pen({ name: 'simpleClass', text: 'User|+ name\\n+ role|- login()', width: 180, height: 140 }) },
+      { id: 'interfaceClass', label: '接口', image: './img/uml/interfaceClass.png', createPen: () => pen({ name: 'interfaceClass', text: 'IService|+ run()', width: 180, height: 130 }) },
+      { id: 'lifeline', label: '生命线', image: './img/uml/lifeline.png', createPen: () => pen({ name: 'lifeline', text: 'Service', width: 120, height: 220 }) },
+      { id: 'sequenceFocus', label: '激活条', image: './img/uml/sequenceFocus.png', createPen: () => pen({ name: 'sequenceFocus', text: '', width: 36, height: 170 }) },
     ],
   },
   {
@@ -758,7 +758,7 @@ export const assetGroups: AssetGroup[] = [
       {
         id: 'time',
         label: '时间',
-        image: '/img/form/time.png',
+        image: './img/form/time.png',
         createPen: () =>
           pen({
             name: 'time',
@@ -774,7 +774,7 @@ export const assetGroups: AssetGroup[] = [
             timeout: 1000,
           } as Pen),
       },
-      { id: 'table', label: '表格', image: '/img/form/table.png', createPen: formTablePen },
+      { id: 'table', label: '表格', image: './img/form/table.png', createPen: formTablePen },
     ],
   },
   {
@@ -785,7 +785,7 @@ export const assetGroups: AssetGroup[] = [
       {
         id: 'echartsBar',
         label: 'ECharts柱图',
-        image: '/img/echarts/echartsBar.png',
+        image: './img/echarts/echartsBar.png',
         createPen: () =>
           pen({
             name: 'echarts',
@@ -799,7 +799,7 @@ export const assetGroups: AssetGroup[] = [
       {
         id: 'echartsLine',
         label: 'ECharts折线',
-        image: '/img/echarts/echartsLine.png',
+        image: './img/echarts/echartsLine.png',
         createPen: () =>
           pen({
             name: 'echarts',
@@ -813,7 +813,7 @@ export const assetGroups: AssetGroup[] = [
       {
         id: 'echartsPie',
         label: 'ECharts饼图',
-        image: '/img/echarts/echartsPie.png',
+        image: './img/echarts/echartsPie.png',
         createPen: () =>
           pen({
             name: 'echarts',
@@ -827,7 +827,7 @@ export const assetGroups: AssetGroup[] = [
       {
         id: 'gauge',
         label: '仪表盘',
-        image: '/img/echarts/gauge.png',
+        image: './img/echarts/gauge.png',
         createPen: () =>
           pen({
             name: 'gauge',
@@ -849,7 +849,7 @@ export const assetGroups: AssetGroup[] = [
       {
         id: 'echartsMapRegion',
         label: 'ECharts地图',
-        image: '/img/echarts/echartsMapRegion.png',
+        image: './img/echarts/echartsMapRegion.png',
         createPen: () =>
           pen({
             name: 'echarts',
@@ -863,7 +863,7 @@ export const assetGroups: AssetGroup[] = [
       {
         id: 'echartsMapScatter',
         label: '地图点位',
-        image: '/img/echarts/echartsMapScatter.png',
+        image: './img/echarts/echartsMapScatter.png',
         createPen: () =>
           pen({
             name: 'echarts',
@@ -877,7 +877,7 @@ export const assetGroups: AssetGroup[] = [
       {
         id: 'echartsMapFlow',
         label: '地图线路',
-        image: '/img/echarts/echartsMapFlow.png',
+        image: './img/echarts/echartsMapFlow.png',
         createPen: () =>
           pen({
             name: 'echarts',
@@ -891,7 +891,7 @@ export const assetGroups: AssetGroup[] = [
       {
         id: 'echartsShanxiMap',
         label: '山西地图',
-        image: '/img/echarts/echartsShanxiMap.png',
+        image: './img/echarts/echartsShanxiMap.png',
         createPen: () =>
           pen({
             name: 'echarts',
@@ -905,7 +905,7 @@ export const assetGroups: AssetGroup[] = [
       {
         id: 'echartsShanxiScatter',
         label: '山西点位',
-        image: '/img/echarts/echartsShanxiScatter.png',
+        image: './img/echarts/echartsShanxiScatter.png',
         createPen: () =>
           pen({
             name: 'echarts',
@@ -925,8 +925,8 @@ export const assetGroups: AssetGroup[] = [
     items: Array.from({ length: 12 }).map((_, i) => ({
       id: `device${i + 1}`,
       label: `设备${i + 1}`,
-      image: `/img/device/device${i + 1}.png`,
-      createPen: () => pen({ name: 'image', image: `/img/device/device${i + 1}.png`, width: 100, height: 100 }),
+      image: `./img/device/device${i + 1}.png`,
+      createPen: () => pen({ name: 'image', image: `./img/device/device${i + 1}.png`, width: 100, height: 100 }),
     })),
   },
   {
@@ -937,21 +937,21 @@ export const assetGroups: AssetGroup[] = [
       {
         id: 'title',
         label: '标题',
-        image: '/img/bigscreen/title.png',
+        image: './img/bigscreen/title.png',
         span: 3,
-        createPen: () => pen({ name: 'image', image: '/img/bigscreen/title.png', width: 1000, height: 100 }),
+        createPen: () => pen({ name: 'image', image: './img/bigscreen/title.png', width: 1000, height: 100 }),
       },
       {
         id: 'card1',
         label: '卡片1',
-        image: '/img/bigscreen/card1.png',
-        createPen: () => pen({ name: 'image', image: '/img/bigscreen/card1.png', width: 400, height: 300 }),
+        image: './img/bigscreen/card1.png',
+        createPen: () => pen({ name: 'image', image: './img/bigscreen/card1.png', width: 400, height: 300 }),
       },
       {
         id: 'card2',
         label: '卡片2',
-        image: '/img/bigscreen/card2.png',
-        createPen: () => pen({ name: 'image', image: '/img/bigscreen/card2.png', width: 400, height: 300 }),
+        image: './img/bigscreen/card2.png',
+        createPen: () => pen({ name: 'image', image: './img/bigscreen/card2.png', width: 400, height: 300 }),
       },
     ],
   },
