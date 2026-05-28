@@ -6,7 +6,10 @@ const STORAGE_KEY = 'my-2-5d-editor';
 export function createEditorFile(meta2d: Meta2d, settings: CanvasSettings): EditorFile {
   return {
     version: 1,
-    settings,
+    settings: {
+      ...settings,
+      drawingMode: null,
+    },
     meta2d: meta2d.data(),
   };
 }

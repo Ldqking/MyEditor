@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { CanvasLayer, type Meta2d, type Options, type Pen } from '@meta2d/core';
+import { CanvasLayer, TwoWay, disconnectLine, getAnchor, globalStore, type Meta2d, type Options, type Pen, type Point } from '@meta2d/core';
 import type { CanvasSettings, CommunicationConfig, EditorFile, PenEventConfig } from '../types';
 import { createEditorFile, downloadEditorFile, loadEditorFile, readEditorFile, saveEditorFile } from './fileActions';
 import { enhanceEchartsTooltipPen, enhanceGaugePen, fillMapData, inferEchartsMapScope, initialSettings, suppressPenHoverTitle, upgradeEchartsMapPen, upgradeFormPen } from './assetLibrary';
@@ -20,6 +20,7 @@ const defaultOptions: Options = {
   textColor: '#d8e1e7',
   rule: false,
   autoAlignGrid: true,
+  disableLineDock: true,
 };
 
 type Meta2dDrawingState = Meta2d & {
@@ -31,8 +32,115 @@ type Meta2dDrawingState = Meta2d & {
     externalElements?: HTMLDivElement;
     canvasImage?: { init?: () => void };
     canvasImageBottom?: { init?: () => void };
+    initLineRect?: (pen: Pen) => void;
   };
 };
+
+type LineAnchorSnapshot = {
+  lineId?: string;
+  anchorId?: string;
+  x: number;
+  y: number;
+};
+
+function isLinePen(pen: Pen | null | undefined): pen is Pen {
+  return Boolean(pen && (pen.type || pen.name === 'line'));
+}
+
+function getLineAnchors(pen: Pen): Point[] {
+  return ([...(pen.anchors || []), ...(pen.calculative?.worldAnchors || [])] as Point[]).filter(Boolean);
+}
+
+function extractPensFromEvent(payload: unknown): Pen[] {
+  if (Array.isArray(payload)) {
+    return payload.filter((item): item is Pen => Boolean(item && typeof item === 'object'));
+  }
+  if (!payload || typeof payload !== 'object') return [];
+  const event = payload as { line?: Pen; pen?: Pen; pens?: Pen[] };
+  return [event.line, event.pen, ...(event.pens || [])].filter((item): item is Pen => Boolean(item));
+}
+
+function refreshLineGeometry(meta2d: Meta2d, line: Pen) {
+  const draw = line.name ? globalStore.path2dDraws?.[line.name] : undefined;
+  if (draw) {
+    meta2d.store.path2dMap.set(line, draw(line));
+  }
+  (meta2d as Meta2dDrawingState).canvas?.initLineRect?.(line);
+}
+
+function restoreMovedLineAnchor(meta2d: Meta2d, snapshot: LineAnchorSnapshot | null) {
+  if (!snapshot?.lineId || !snapshot.anchorId) return false;
+  const line = meta2d.store.pens[snapshot.lineId];
+  if (!isLinePen(line)) return false;
+  const anchors = getLineAnchors(line);
+  const anchor = anchors.find((item) => item.id === snapshot.anchorId);
+  if (!anchor) return false;
+  if (Math.abs(anchor.x - snapshot.x) < 0.01 && Math.abs(anchor.y - snapshot.y) < 0.01) return false;
+  anchor.x = snapshot.x;
+  anchor.y = snapshot.y;
+  refreshLineGeometry(meta2d, line);
+  return true;
+}
+
+function shouldRestoreMovedLineAnchor(meta2d: Meta2d, snapshot: LineAnchorSnapshot | null) {
+  if (!snapshot?.lineId || !snapshot.anchorId) return false;
+  const line = meta2d.store.pens[snapshot.lineId];
+  if (!isLinePen(line)) return false;
+  const anchor = getLineAnchors(line).find((item) => item.id === snapshot.anchorId);
+  const connectedPen = anchor?.connectTo ? meta2d.store.pens[anchor.connectTo] : undefined;
+  if (isLinePen(connectedPen)) return true;
+  const hover = meta2d.store.hover;
+  return Boolean(isLinePen(hover) && hover?.id !== line.id);
+}
+
+function preventLineToLineAutoConnections(meta2d: Meta2d, extraPens: Pen[] = [], updateGeometry = true) {
+  const pens = [...meta2d.store.data.pens, ...extraPens];
+  const uniquePens = [...new Map(pens.filter(Boolean).map((pen) => [pen.id || `${pen.name}-${pens.indexOf(pen)}`, pen])).values()];
+  const linePens = uniquePens.filter(isLinePen);
+  const lineIds = new Set(linePens.map((pen) => pen.id).filter(Boolean));
+  let changed = false;
+
+  linePens.forEach((line) => {
+    let lineChanged = false;
+    getLineAnchors(line).forEach((anchor) => {
+      if (anchor.twoWay !== TwoWay.DisableConnected) {
+        anchor.twoWay = TwoWay.DisableConnected;
+        changed = true;
+        lineChanged = true;
+      }
+
+      const connectedPen = anchor.connectTo ? meta2d.store.pens[anchor.connectTo] : undefined;
+      if (!isLinePen(connectedPen)) return;
+      const connectedAnchor = anchor.anchorId ? getAnchor(connectedPen, anchor.anchorId) : undefined;
+      if (connectedAnchor) {
+        disconnectLine(connectedPen, connectedAnchor, line, anchor);
+      }
+      if (anchor.connectTo || anchor.anchorId) {
+        anchor.connectTo = undefined;
+        anchor.anchorId = undefined;
+      }
+      line.autoFrom = undefined;
+      line.autoTo = undefined;
+      changed = true;
+      lineChanged = true;
+    });
+
+    if (line.connectedLines?.length) {
+      const nextConnectedLines = line.connectedLines.filter((item) => !lineIds.has(item.lineId));
+      if (nextConnectedLines.length !== line.connectedLines.length) {
+        line.connectedLines = nextConnectedLines;
+        changed = true;
+        lineChanged = true;
+      }
+    }
+
+    if (lineChanged && updateGeometry) {
+      refreshLineGeometry(meta2d, line);
+    }
+  });
+
+  return changed;
+}
 
 function clearDrawingToolState(meta2d: Meta2d | null | undefined) {
   if (!meta2d) return;
@@ -47,6 +155,19 @@ function clearDrawingToolState(meta2d: Meta2d | null | undefined) {
     drawingMeta2d.canvas.externalElements?.style.setProperty('cursor', 'default');
   }
   drawingMeta2d.render();
+}
+
+async function finishOrCancelDrawingTool(meta2d: Meta2d | null | undefined, drawingMode?: string | null) {
+  if (!meta2d) return;
+  const drawingMeta2d = meta2d as Meta2dDrawingState;
+  if (drawingMode === 'line' && drawingMeta2d.canvas?.drawingLine) {
+    await drawingMeta2d.finishDrawLine(true);
+    preventLineToLineAutoConnections(drawingMeta2d);
+    drawingMeta2d.drawLine('');
+    drawingMeta2d.render();
+    return;
+  }
+  clearDrawingToolState(meta2d);
 }
 
 function normalizeLayerRendering(meta2d: Meta2d) {
@@ -183,6 +304,7 @@ function normalizeEditorFile(file: EditorFile): EditorFile {
       ...initialSettings,
       ...file.settings,
       mockSources,
+      drawingMode: null,
     },
     meta2d: normalizeMeta2dData(file.meta2d),
   };
@@ -250,6 +372,7 @@ export function useMeta2dEditor() {
   const [engineError, setEngineError] = useState<string | null>(null);
   const meta2dRef = useRef<Meta2d | null>(null);
   const settingsRef = useRef(settings);
+  const lineAnchorDragRef = useRef<LineAnchorSnapshot | null>(null);
 
   useEffect(() => {
     settingsRef.current = settings;
@@ -297,6 +420,10 @@ export function useMeta2dEditor() {
       window.meta2d = meta2d;
       meta2dRef.current = meta2d;
       cleanupChartTooltip = installChartHoverTooltip(container, meta2d);
+      meta2d.beforeAddPen = (pen: Pen) => {
+        preventLineToLineAutoConnections(meta2d!, [pen], false);
+        return true;
+      };
       const penNetwork = meta2d.penNetwork.bind(meta2d);
       meta2d.penNetwork = (pen: Pen) => {
         const networkPen = pen as Pen & { apiIndex?: number | string; apiUrl?: string };
@@ -334,20 +461,41 @@ export function useMeta2dEditor() {
       meta2d.registerAnchors(flow.flowAnchors());
       meta2d.setBackgroundColor(settingsRef.current.background);
       meta2d.setGrid({ grid: settingsRef.current.showGrid, gridColor: settingsRef.current.gridColor || '#243139', gridSize: 20 });
-      meta2d.setOptions({ autoAlignGrid: settingsRef.current.snapToGrid });
+      meta2d.setOptions({ autoAlignGrid: settingsRef.current.snapToGrid, disableLineDock: true });
 
-      const events = ['active', 'inactive', 'mouseup', 'change', 'valueUpdate', 'drop'];
+      const events = ['active', 'inactive', 'mouseup', 'change', 'valueUpdate', 'drop', 'add', 'connectLine', 'moveLineAnchor'];
       events.forEach((event) => {
-        meta2d?.on(event, () => {
-          if (event === 'active') {
-            if (settingsRef.current.drawingMode === 'line' || settingsRef.current.drawingMode === 'pencil') {
-              clearDrawingToolState(meta2d);
-              setCanvasSettings((s) => ({ ...s, drawingMode: null }));
-            }
-          }
+        meta2d?.on(event, (payload?: unknown) => {
           if (event === 'drop' && meta2d) {
             upgradeEchartsMapPens(meta2d);
             syncEchartsExternalElements(meta2d);
+          }
+          if (event === 'moveLineAnchor' && payload && typeof payload === 'object') {
+            const { pen, anchor } = payload as { pen?: Pen; anchor?: Point };
+            if (isLinePen(pen) && anchor) {
+              lineAnchorDragRef.current = {
+                lineId: pen.id,
+                anchorId: anchor.id,
+                x: anchor.x,
+                y: anchor.y,
+              };
+            }
+          }
+          if ((event === 'add' || event === 'mouseup' || event === 'change' || event === 'connectLine' || event === 'moveLineAnchor') && meta2d) {
+            const shouldRestore = event === 'mouseup'
+              ? shouldRestoreMovedLineAnchor(meta2d, lineAnchorDragRef.current)
+              : event === 'connectLine' && (() => {
+                const { line, pen } = (payload || {}) as { line?: Pen; pen?: Pen };
+                return isLinePen(line) && isLinePen(pen);
+              })();
+            const restored = shouldRestore ? restoreMovedLineAnchor(meta2d, lineAnchorDragRef.current) : false;
+            const changed = preventLineToLineAutoConnections(meta2d, extractPensFromEvent(payload));
+            if (restored || changed) {
+              meta2d.render();
+            }
+            if (event === 'mouseup') {
+              lineAnchorDragRef.current = null;
+            }
           }
           refresh();
         });
@@ -387,7 +535,7 @@ export function useMeta2dEditor() {
         if (meta2d) {
           meta2d.setBackgroundColor(resolved.background);
           meta2d.setGrid({ grid: resolved.showGrid, gridColor: resolved.gridColor || '#243139', gridSize: 20 });
-          meta2d.setOptions({ autoAlignGrid: resolved.snapToGrid });
+          meta2d.setOptions({ autoAlignGrid: resolved.snapToGrid, disableLineDock: true });
           meta2d.render();
         }
         return resolved;
@@ -406,6 +554,7 @@ export function useMeta2dEditor() {
           const editorFile = normalizeEditorFile(file);
           setCanvasSettings(editorFile.settings);
           meta2d.open(editorFile.meta2d);
+          preventLineToLineAutoConnections(meta2d);
           upgradeEchartsMapPens(meta2d);
           syncEchartsExternalElements(meta2d);
           refresh();
@@ -445,6 +594,7 @@ export function useMeta2dEditor() {
       const x = rect ? Math.max(40, rect.width / 2 - width / 2) : 420;
       const y = rect ? Math.max(40, rect.height / 2 - height / 2) : 260;
       const created = await meta2d.addPen(clonePen(pen, x, y), true);
+      preventLineToLineAutoConnections(meta2d, [created]);
       upgradeEchartsMapPen(created);
       meta2d.active([created]);
       upgradeEchartsMapPens(meta2d);
@@ -611,6 +761,7 @@ export function useMeta2dEditor() {
         // 设置画布配置并载入图元
         setCanvasSettings(editorFile.settings);
         meta2d.open(editorFile.meta2d);
+        preventLineToLineAutoConnections(meta2d);
         upgradeEchartsMapPens(meta2d);
         syncEchartsExternalElements(meta2d);
 
@@ -638,6 +789,7 @@ export function useMeta2dEditor() {
     const editorFile = normalizeEditorFile(file);
     setCanvasSettings(editorFile.settings);
     meta2d.open(editorFile.meta2d);
+    preventLineToLineAutoConnections(meta2d);
     upgradeEchartsMapPens(meta2d);
     syncEchartsExternalElements(meta2d);
     refresh();
@@ -649,6 +801,7 @@ export function useMeta2dEditor() {
     const editorFile = normalizeEditorFile(data);
     setCanvasSettings(editorFile.settings);
     meta2d.open(editorFile.meta2d);
+    preventLineToLineAutoConnections(meta2d);
     upgradeEchartsMapPens(meta2d);
     meta2d.lock(1); // Force lock in preview
     syncEchartsExternalElements(meta2d);
@@ -849,19 +1002,33 @@ export function useMeta2dEditor() {
   }, [setCanvasSettings]);
 
   const drawingLine = useCallback(() => {
-    if (settingsRef.current.drawingMode === 'line') {
+    const meta2d = meta2dRef.current as Meta2dDrawingState | null;
+    const isDrawingLine = Boolean(meta2d?.canvas?.drawingLine || meta2d?.canvas?.drawingLineName);
+    if (settingsRef.current.drawingMode === 'line' && isDrawingLine) {
       stopPencil();
     } else {
-      meta2dRef.current?.drawLine('curve');
+      meta2d?.stopPencil();
+      if (meta2d?.canvas) {
+        meta2d.canvas.pencil = false;
+        meta2d.canvas.pencilLine = undefined;
+      }
+      meta2d?.drawLine('line');
       setCanvasSettings((s) => ({ ...s, drawingMode: 'line' }));
     }
   }, [setCanvasSettings, stopPencil]);
 
   const drawingPencil = useCallback(() => {
-    if (settingsRef.current.drawingMode === 'pencil') {
+    const meta2d = meta2dRef.current as Meta2dDrawingState | null;
+    const isDrawingPencil = Boolean(meta2d?.canvas?.pencil);
+    if (settingsRef.current.drawingMode === 'pencil' && isDrawingPencil) {
       stopPencil();
     } else {
-      meta2dRef.current?.drawingPencil();
+      meta2d?.drawLine('');
+      if (meta2d?.canvas) {
+        meta2d.canvas.drawingLine = undefined;
+        meta2d.canvas.drawingLineName = undefined;
+      }
+      meta2d?.drawingPencil();
       setCanvasSettings((s) => ({ ...s, drawingMode: 'pencil' }));
     }
   }, [setCanvasSettings, stopPencil]);
@@ -873,14 +1040,21 @@ export function useMeta2dEditor() {
 
   useEffect(() => {
     if (!engineReady) return;
+    let handledDrawingRightClick = false;
+
     const cancelDrawingOnRightMouseDown = (e: MouseEvent) => {
       const drawingMode = settingsRef.current.drawingMode;
       if (e.button !== 2 || (drawingMode !== 'line' && drawingMode !== 'pencil')) return;
       e.preventDefault();
       e.stopPropagation();
-      clearDrawingToolState(meta2dRef.current);
-      setCanvasSettings((s) => ({ ...s, drawingMode: null }));
-      refresh();
+      handledDrawingRightClick = true;
+      void finishOrCancelDrawingTool(meta2dRef.current, drawingMode).finally(() => {
+        setCanvasSettings((s) => ({ ...s, drawingMode: null }));
+        refresh();
+        window.setTimeout(() => {
+          handledDrawingRightClick = false;
+        }, 0);
+      });
     };
 
     const handleContextMenu = (e: MouseEvent) => {
@@ -888,7 +1062,8 @@ export function useMeta2dEditor() {
       if (drawingMode === 'line' || drawingMode === 'pencil') {
         e.preventDefault();
         e.stopPropagation();
-        clearDrawingToolState(meta2dRef.current);
+        if (handledDrawingRightClick) return;
+        void finishOrCancelDrawingTool(meta2dRef.current, drawingMode);
         setCanvasSettings((s) => ({ ...s, drawingMode: null }));
         refresh();
         return;
